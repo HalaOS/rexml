@@ -1,16 +1,10 @@
-use std::{
-    borrow::Cow,
-    fmt::Display,
-    marker::PhantomData,
-    ops::{Deref, DerefMut},
-};
+use std::{borrow::Cow, fmt::Display};
 
 use bytes::complete::*;
 use character::complete::*;
 use combinator::opt;
 use nom::*;
 
-use crate::{Error, Result};
 fn nc_name(value: &str) -> IResult<&str, &str> {
     let (input, _) = satisfy(is_name_start_char)(value)?;
 
@@ -90,21 +84,21 @@ pub enum NodeType {
 
 /// This corresponds to the DOM Node interface.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Node {
+pub struct NodeRef {
     /// The reference id of the memory manager of the document to which this node belongs.
     id: usize,
     /// The [`node_type`](NodeType) of this node.
     pub node_type: NodeType,
 }
 
-impl Node {
+impl NodeRef {
     #[allow(unused)]
     pub(crate) fn new(id: usize, node_type: NodeType) -> Self {
         Self { id, node_type }
     }
 }
 
-impl Display for Node {
+impl Display for NodeRef {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}({})", self.node_type, self.id,)
     }
@@ -148,7 +142,7 @@ impl<'a> Display for QName<'a> {
 #[derive(Debug)]
 pub struct Namespace<'a> {
     /// The node to which this namespace belongs.
-    node: Node,
+    node: NodeRef,
     /// The namespace prefix
     prefix: Cow<'a, str>,
     /// The namespace href
@@ -157,12 +151,12 @@ pub struct Namespace<'a> {
 
 impl<'a> Namespace<'a> {
     #[allow(unused)]
-    fn new(node: Node, prefix: Cow<'a, str>, href: Cow<'a, str>) -> Self {
+    fn new(node: NodeRef, prefix: Cow<'a, str>, href: Cow<'a, str>) -> Self {
         Self { node, prefix, href }
     }
 
     /// Return namespace's parent node.
-    pub fn parent(&self) -> &Node {
+    pub fn parent(&self) -> &NodeRef {
         &self.node
     }
 
@@ -183,120 +177,11 @@ impl<'a> Display for Namespace<'a> {
     }
 }
 
-#[derive(Debug)]
-pub struct Attribute<'a> {
-    name: QName<'a>,
-    value: Cow<'a, str>,
-}
-
-#[derive(Default, Debug)]
-pub struct NodeTree {
-    /// parent node.
-    parent: Option<Node>,
-    /// children nodes.
-    children: Vec<Node>,
-}
-
-impl NodeTree {
-    /// The parent of this node. All nodes, except `Attr``, `Document`, `DocumentFragment`, `Entity`, and `Notation` may have a parent.
-    pub fn parent(&self) -> Option<&Node> {
-        self.parent.as_ref()
-    }
-
-    /// A `Iterator` over all children of this node.
-    pub fn child_nodes(&self) -> impl Iterator<Item = &Node> {
-        self.children.iter()
-    }
-
-    /// Removes the child node from this element.
-    pub fn remove_child(&mut self, node: &Node) {
-        if let Some(index) =
-            self.children
-                .iter()
-                .enumerate()
-                .find_map(|(index, c)| if *c == *node { Some(index) } else { None })
-        {
-            self.children.swap_remove(index);
-        }
-    }
-
-    /// Adds the node newChild to the end of the list of children of this node.
-    /// If the newChild is already in the tree, it is first removed.
-    pub fn append_child(&mut self, node: Node) {
-        self.remove_child(&node);
-        self.children.push(node);
-    }
-
-    pub fn replace_child(&mut self, old: &Node, new: Node) -> bool {
-        if let Some(index) =
-            self.children
-                .iter()
-                .enumerate()
-                .find_map(|(index, c)| if *c == *old { Some(index) } else { None })
-        {
-            self.children[index] = new;
-            true
-        } else {
-            false
-        }
-    }
-
-    /// Returns whether this node has any children.
-    pub fn has_child_nodes(&self) -> bool {
-        !self.children.is_empty()
-    }
-}
-
-macro_rules! impl_node_tree {
-    ($ident: ident) => {
-        impl<'a> Deref for $ident<'a> {
-            type Target = NodeTree;
-
-            fn deref(&self) -> &Self::Target {
-                &self.tree
-            }
-        }
-
-        impl<'a> DerefMut for $ident<'a> {
-            fn deref_mut(&mut self) -> &mut Self::Target {
-                &mut self.tree
-            }
-        }
-    };
-}
-
-///  This corresponds to the DOM element interface.
-pub struct Element<'a> {
-    tree: NodeTree,
-    /// qualified name of tag.
-    qname: QName<'a>,
-    /// The attribute list.
-    atts: Vec<Attribute<'a>>,
-}
-
-impl_node_tree!(Element);
-
-impl<'a> Element<'a> {
-    #[allow(unused)]
-    fn new(qname: QName<'a>, parent: Option<Node>) -> Self {
-        Self {
-            tree: Default::default(),
-            qname,
-            atts: Default::default(),
-        }
-    }
-
-    /// Get the element tag's qualified name.
-    pub fn qname(&self) -> &QName<'a> {
-        &self.qname
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use crate::Namespace;
 
-    use super::{Node, NodeType, QName};
+    use super::{NodeRef, NodeType, QName};
 
     #[test]
     fn test_qname() {
@@ -315,7 +200,7 @@ mod tests {
 
     #[test]
     fn test_node() {
-        println!("{}", Node::new(1, NodeType::Attribute));
+        println!("{}", NodeRef::new(1, NodeType::Attribute));
     }
 
     #[test]
@@ -323,7 +208,7 @@ mod tests {
         println!(
             "{}",
             Namespace::new(
-                Node::new(1, NodeType::Element),
+                NodeRef::new(1, NodeType::Element),
                 "xsl".into(),
                 "http://www.w3.org/1999/XSL/Transform".into()
             )

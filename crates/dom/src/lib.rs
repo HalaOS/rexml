@@ -12,3 +12,6 @@ pub use primitives::*;
 
 mod errors;
 pub use errors::*;
+
+mod dom;
+pub use dom::*;
