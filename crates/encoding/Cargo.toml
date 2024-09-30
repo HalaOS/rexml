@@ -1,0 +1,15 @@
+[package]
+description = "encoding utilities for rexml."
+documentation = "https://docs.rs/rexml-encoding"
+edition.workspace = true
+license = "MIT"
+name = "rexml-encoding"
+repository = "https://github.com/HalaOS/rexml.git"
+version.workspace = true
+
+[dependencies]
+no-std-compat = { workspace = true }
+
+[features]
+default = ["std"] # Default to using the std
+std = ["no-std-compat/std"]

@@ -1,0 +1,16 @@
+[package]
+description = "Dom api implementation of rexml."
+documentation = "https://docs.rs/rexml-dom"
+edition.workspace = true
+license = "MIT"
+name = "rexml-dom"
+repository = "https://github.com/HalaOS/rexml.git"
+version.workspace = true
+
+[dependencies]
+no-std-compat = { workspace = true }
+rexml-encoding = { workspace = true }
+
+[features]
+default = ["std"] # Default to using the std
+std = ["no-std-compat/std", "rexml-encoding/std"]
