@@ -63,47 +63,6 @@ fn parse_qname(input: &str) -> IResult<&str, QName<'_>> {
     ));
 }
 
-/// This corresponds to the DOM NodeType set of constants.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum NodeType {
-    Element = 1,
-    Attribute = 2,
-    Text = 3,
-    CData = 4,
-    EntityReference = 5,
-    Entity = 6,
-    ProcessingInstruction = 7,
-    Comment = 8,
-    Document = 9,
-    DocumentType = 10,
-    DocumentFragment = 11,
-    Notation = 12,
-    /// This is an extension type and is not part of the DOM standard.
-    Namespace = 13,
-}
-
-/// This corresponds to the DOM Node interface.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct NodeRef {
-    /// The reference id of the memory manager of the document to which this node belongs.
-    id: usize,
-    /// The [`node_type`](NodeType) of this node.
-    pub node_type: NodeType,
-}
-
-impl NodeRef {
-    #[allow(unused)]
-    pub(crate) fn new(id: usize, node_type: NodeType) -> Self {
-        Self { id, node_type }
-    }
-}
-
-impl Display for NodeRef {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}({})", self.node_type, self.id,)
-    }
-}
-
 /// A [`QName`], or qualified name, is the fully qualified name of an element, attribute, or identifier in an XML document.
 ///
 /// [`QName`]: https://www.wikiwand.com/en/articles/QName
@@ -138,50 +97,10 @@ impl<'a> Display for QName<'a> {
     }
 }
 
-/// This corresponds to the namespace extension.
-#[derive(Debug)]
-pub struct Namespace<'a> {
-    /// The node to which this namespace belongs.
-    node: NodeRef,
-    /// The namespace prefix
-    prefix: Cow<'a, str>,
-    /// The namespace href
-    href: Cow<'a, str>,
-}
-
-impl<'a> Namespace<'a> {
-    #[allow(unused)]
-    fn new(node: NodeRef, prefix: Cow<'a, str>, href: Cow<'a, str>) -> Self {
-        Self { node, prefix, href }
-    }
-
-    /// Return namespace's parent node.
-    pub fn parent(&self) -> &NodeRef {
-        &self.node
-    }
-
-    /// Returns the prefix part of namespace
-    pub fn prefix(&self) -> &str {
-        &self.prefix
-    }
-
-    /// Returns the href part of namespace
-    pub fn href(&self) -> &str {
-        &self.href
-    }
-}
-
-impl<'a> Display for Namespace<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Namespace({},{},{})", self.node, self.prefix, self.href,)
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use crate::Namespace;
 
-    use super::{NodeRef, NodeType, QName};
+    use super::*;
 
     #[test]
     fn test_qname() {
@@ -196,22 +115,5 @@ mod tests {
         let qname: QName = "hello".try_into().unwrap();
 
         assert_eq!(qname.to_string(), "hello");
-    }
-
-    #[test]
-    fn test_node() {
-        println!("{}", NodeRef::new(1, NodeType::Attribute));
-    }
-
-    #[test]
-    fn test_namespace() {
-        println!(
-            "{}",
-            Namespace::new(
-                NodeRef::new(1, NodeType::Element),
-                "xsl".into(),
-                "http://www.w3.org/1999/XSL/Transform".into()
-            )
-        );
     }
 }

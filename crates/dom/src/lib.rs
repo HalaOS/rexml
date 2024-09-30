@@ -7,11 +7,14 @@
 // #[cfg(not(feature = "std"))]
 // use std::prelude::v1::*;
 
-mod primitives;
-pub use primitives::*;
-
 mod errors;
 pub use errors::*;
 
-mod dom;
-pub use dom::*;
+mod namespace;
+pub use namespace::*;
+
+mod qname;
+pub use qname::*;
+
+mod object;
+pub use object::*;

@@ -1,4 +1,4 @@
-use crate::NodeRef;
+use crate::DOMObject;
 
 /// Error type returns by this mod.
 #[derive(Debug, thiserror::Error)]
@@ -7,7 +7,7 @@ pub enum Error<'a> {
     QName(&'a str),
 
     #[error("Not found node: {0}")]
-    NodeNotFound(NodeRef),
+    NodeNotFound(DOMObject),
 }
 
 /// Result type returns by this mod.
