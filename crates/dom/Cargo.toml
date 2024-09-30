@@ -10,7 +10,16 @@ version.workspace = true
 [dependencies]
 no-std-compat = { workspace = true }
 rexml-encoding = { workspace = true }
+thiserror = { workspace = true }
+nom = { workspace = true }
+
+[dev-dependencies]
+divan = { workspace = true }
 
 [features]
 default = ["std"] # Default to using the std
 std = ["no-std-compat/std", "rexml-encoding/std"]
+
+[[bench]]
+name = "primitives"
+harness = false
