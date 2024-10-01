@@ -1,4 +1,4 @@
-//! A DOM like api implementation for rexml.
+//! Document Object Model (DOM) Level 2 Core Specification Implementation for Rust.
 
 // #![cfg_attr(not(feature = "std"), no_std)]
 
@@ -10,11 +10,17 @@
 mod errors;
 pub use errors::*;
 
-mod namespace;
-pub use namespace::*;
-
 mod qname;
 pub use qname::*;
 
 mod object;
 pub use object::*;
+
+mod document;
+pub use document::*;
+
+mod node;
+
+mod comment;
+
+mod namespace;

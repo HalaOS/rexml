@@ -19,7 +19,28 @@ pub enum NodeType {
     Namespace = 13,
 }
 
-/// This corresponds to an object of DOM `node`.
+impl NodeType {
+    /// Returns true, if the node type is a leaf node.
+    pub fn is_leaf(&self) -> bool {
+        match self {
+            NodeType::Element => false,
+            NodeType::Attribute => false,
+            NodeType::Text => true,
+            NodeType::CData => true,
+            NodeType::EntityReference => true,
+            NodeType::Entity => false,
+            NodeType::ProcessingInstruction => true,
+            NodeType::Comment => true,
+            NodeType::Document => false,
+            NodeType::DocumentType => true,
+            NodeType::DocumentFragment => false,
+            NodeType::Notation => true,
+            NodeType::Namespace => true,
+        }
+    }
+}
+
+/// A reference to a node of one `Document`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct DOMObject {
     /// The reference id of the memory manager of the document to which this node belongs.

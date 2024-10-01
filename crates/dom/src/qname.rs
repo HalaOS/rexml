@@ -97,6 +97,16 @@ impl<'a> Display for QName<'a> {
     }
 }
 
+impl<'a> QName<'a> {
+    /// Returns a new owning QName from the given existing one.
+    pub fn into_owned(self) -> QName<'static> {
+        QName::<'static> {
+            prefix: self.prefix.map(|v| v.into_owned().into()),
+            local_part: self.local_part.into_owned().into(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
 
