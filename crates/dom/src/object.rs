@@ -49,6 +49,15 @@ pub struct DOMObject {
     pub node_type: NodeType,
 }
 
+impl Default for DOMObject {
+    fn default() -> Self {
+        Self {
+            id: 0,
+            node_type: NodeType::Document,
+        }
+    }
+}
+
 impl DOMObject {
     #[allow(unused)]
     pub(crate) fn new(id: usize, node_type: NodeType) -> Self {

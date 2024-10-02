@@ -1,9 +1,7 @@
-use crate::DOMObject;
-
 /// Error code corresponds to DOM `ExceptionCode`.
 #[allow(non_camel_case_types)]
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
-pub enum DOMExceptionCode {
+pub enum ExceptionCode {
     INDEX_SIZE_ERR = 1,
     DOMSTRING_SIZE_ERR = 2,
     HIERARCHY_REQUEST_ERR = 3,
@@ -23,16 +21,13 @@ pub enum DOMExceptionCode {
 
 /// Error type returns by this mod.
 #[derive(Debug, thiserror::Error)]
-pub enum Error<'a> {
+pub enum Error {
     #[error("Invalid NCName: {0}")]
-    QName(&'a str),
-
-    #[error("Not found node: {0}")]
-    NodeNotFound(DOMObject),
+    QName(String),
 
     #[error("DOMException: {0:?}")]
-    DOMException(DOMExceptionCode),
+    DOMException(ExceptionCode),
 }
 
 /// Result type returns by this mod.
-pub type Result<'a, T> = std::result::Result<T, Error<'a>>;
+pub type Result<T> = std::result::Result<T, Error>;

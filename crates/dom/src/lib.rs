@@ -16,11 +16,4 @@ pub use qname::*;
 mod object;
 pub use object::*;
 
-mod document;
-pub use document::*;
-
-mod node;
-
-mod comment;
-
-mod namespace;
+pub mod arena;

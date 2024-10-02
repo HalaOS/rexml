@@ -75,12 +75,13 @@ pub struct QName<'a> {
 }
 
 impl<'a> TryFrom<&'a str> for QName<'a> {
-    type Error = crate::Error<'a>;
+    type Error = crate::Error;
     fn try_from(value: &'a str) -> std::result::Result<Self, Self::Error> {
-        let (input, qname) = parse_qname(value).map_err(|_| crate::Error::QName(&value))?;
+        let (input, qname) =
+            parse_qname(value).map_err(|_| crate::Error::QName(value.to_owned()))?;
 
         if !input.is_empty() {
-            return Err(crate::Error::QName(value));
+            return Err(crate::Error::QName(value.to_owned()));
         }
 
         Ok(qname)
