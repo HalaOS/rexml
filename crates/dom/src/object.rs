@@ -2,6 +2,7 @@ use std::fmt::Display;
 
 /// This corresponds to the DOM NodeType set of constants.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(u32)]
 pub enum NodeType {
     Element = 1,
     Attribute = 2,
@@ -44,9 +45,9 @@ impl NodeType {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct DOMObject {
     /// The reference id of the memory manager of the document to which this node belongs.
-    id: usize,
+    id: u32,
     /// The [`node_type`](NodeType) of this node.
-    pub node_type: NodeType,
+    node_type: NodeType,
 }
 
 impl Default for DOMObject {
@@ -61,7 +62,15 @@ impl Default for DOMObject {
 impl DOMObject {
     #[allow(unused)]
     pub(crate) fn new(id: usize, node_type: NodeType) -> Self {
-        Self { id, node_type }
+        Self {
+            id: id as u32,
+            node_type,
+        }
+    }
+
+    /// Returns the [`NodeType`] of the node referenced by this object.
+    pub fn node_type(&self) -> NodeType {
+        self.node_type
     }
 }
 
