@@ -167,7 +167,8 @@ impl<'a> ArenaElement<'a> {
             | NodeType::ProcessingInstruction
             | NodeType::EntityReference
             | NodeType::Attribute
-            | NodeType::Namespace => {
+            | NodeType::Namespace
+            | NodeType::DocumentType => {
                 self.node.remove_child(child);
                 Ok(())
             }
@@ -309,7 +310,7 @@ impl<'a> ArenaNotation<'a> {
     }
 }
 
-/// `Notation` allocated by one `ArenaDocument`.
+/// `Entity` allocated by one `ArenaDocument`.
 pub struct ArenaEntity<'a> {
     object: DOMObject,
     node: ArenaNode,
@@ -356,10 +357,58 @@ impl<'a> ArenaEntity<'a> {
     }
 }
 
+/// `DocumentType` allocated by one `ArenaDocument`.
+pub struct ArenaDocumentType<'a> {
+    object: DOMObject,
+    node: ArenaNode,
+    internal_subset: Cow<'a, str>,
+    public_id: Cow<'a, str>,
+    system_id: Cow<'a, str>,
+}
+
+impl<'a> AsRef<DOMObject> for ArenaDocumentType<'a> {
+    fn as_ref(&self) -> &DOMObject {
+        &self.object
+    }
+}
+
+impl<'a> ArenaDocumentType<'a> {
+    fn new(
+        object: DOMObject,
+        public_id: Cow<'a, str>,
+        system_id: Cow<'a, str>,
+        internal_subset: Cow<'a, str>,
+    ) -> Self {
+        Self {
+            object,
+            node: Default::default(),
+            public_id,
+            system_id,
+            internal_subset,
+        }
+    }
+
+    /// Returns the target as str
+    pub fn public_id(&self) -> &str {
+        &self.public_id
+    }
+
+    /// Returns the data as str
+    pub fn system_id(&self) -> &str {
+        &self.system_id
+    }
+
+    /// For unparsed entities, the name of the notation for the entity. For parsed entities, this is [`None`].
+    pub fn internal_subset(&self) -> &str {
+        &self.internal_subset
+    }
+}
+
 /// A DOM `Document` implementation with arena memory managerment.
 #[derive(Default)]
 pub struct ArenaDocument<'a> {
     this_node: ArenaNode,
+    doc_types: Vec<ArenaDocumentType<'a>>,
     els: Vec<ArenaElement<'a>>,
     attrs: Vec<ArenaAttr<'a>>,
     nss: Vec<ArenaNamespace<'a>>,
@@ -459,6 +508,17 @@ impl<'a> ArenaDocument<'a> {
             NodeType::Text => {
                 if self
                     .text(child)
+                    .ok_or(Error::DOMException(ExceptionCode::NOT_FOUND_ERR))?
+                    .node
+                    .parent
+                    .is_some()
+                {
+                    return Err(Error::DOMException(ExceptionCode::HIERARCHY_REQUEST_ERR));
+                }
+            }
+            NodeType::DocumentType => {
+                if self
+                    .doc_type(child)
                     .ok_or(Error::DOMException(ExceptionCode::NOT_FOUND_ERR))?
                     .node
                     .parent
@@ -595,6 +655,17 @@ impl<'a> ArenaDocument<'a> {
         }
 
         self.entities = entities;
+
+        // check DocumentType list.
+        let mut doc_types = vec![];
+
+        for mut doc_type in self.doc_types.drain(..) {
+            if doc_type.node.check_gc_state() {
+                doc_types.push(doc_type);
+            }
+        }
+
+        self.doc_types = doc_types;
     }
 
     /// Create a new `Element` node.
@@ -722,6 +793,32 @@ impl<'a> ArenaDocument<'a> {
         let text = ArenaText::new(object.clone(), data.into());
 
         self.texts.push(text);
+
+        Ok(object)
+    }
+
+    /// Create a new `DocumentType` node.
+    pub fn create_document_type<P, S, I>(
+        &mut self,
+        public_id: P,
+        system_id: S,
+        internal_subset: I,
+    ) -> Result<DOMObject>
+    where
+        P: Into<Cow<'a, str>>,
+        S: Into<Cow<'a, str>>,
+        I: Into<Cow<'a, str>>,
+    {
+        let object = DOMObject::new(self.els.len(), NodeType::DocumentType);
+
+        let doc_type = ArenaDocumentType::new(
+            object.clone(),
+            public_id.into(),
+            system_id.into(),
+            internal_subset.into(),
+        );
+
+        self.doc_types.push(doc_type);
 
         Ok(object)
     }
@@ -875,6 +972,20 @@ impl<'a> ArenaDocument<'a> {
 
         self.entities.iter_mut().find(|el| el.object == *object)
     }
+
+    /// Returns a immutable reference to [`ArenaDocumentType`]
+    pub fn doc_type(&self, object: &DOMObject) -> Option<&ArenaDocumentType<'a>> {
+        assert_eq!(object.node_type(), NodeType::DocumentType);
+
+        self.doc_types.iter().find(|el| el.object == *object)
+    }
+
+    /// Returns a mutable reference to [`ArenaEntity`]
+    pub fn doc_type_mut(&mut self, object: &DOMObject) -> Option<&mut ArenaDocumentType<'a>> {
+        assert_eq!(object.node_type(), NodeType::DocumentType);
+
+        self.doc_types.iter_mut().find(|el| el.object == *object)
+    }
 }
 
 /// An Iterator over one node's children.
@@ -921,7 +1032,7 @@ mod tests {
     }
 
     #[test]
-    fn append_twice() {
+    fn doc_maximum_of_one() {
         let mut doc = ArenaDocument::default();
 
         let element = doc.create_element("hello").unwrap();
@@ -929,6 +1040,13 @@ mod tests {
         doc.append_child(None, element).unwrap();
 
         doc.append_child(None, element)
+            .expect_err("twice append check");
+
+        let doc_type = doc.create_document_type("hello", "hello", "hello").unwrap();
+
+        doc.append_child(None, doc_type).unwrap();
+
+        doc.append_child(None, doc_type)
             .expect_err("twice append check");
     }
 
