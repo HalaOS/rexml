@@ -101,14 +101,14 @@ impl<'a> ArenaNamespace<'a> {
 }
 
 /// Attribute of one element.
-pub struct ArenaAttr<'a> {
+pub struct Attr<'a> {
     object: DOMObject,
     node: ArenaNode,
     name: QName<'a>,
     value: Cow<'a, str>,
 }
 
-impl<'a> ArenaAttr<'a> {
+impl<'a> Attr<'a> {
     fn new(object: DOMObject, name: QName<'a>, value: Cow<'a, str>) -> Self {
         Self {
             node: Default::default(),
@@ -127,22 +127,39 @@ impl<'a> ArenaAttr<'a> {
     pub fn value(&self) -> &str {
         &self.value
     }
+
+    fn append_child(&mut self, child: DOMObject) -> Result<()> {
+        self.remove_child(&child)?;
+        self.node.append_child(child);
+
+        Ok(())
+    }
+
+    fn remove_child(&mut self, child: &DOMObject) -> Result<()> {
+        match child.node_type() {
+            NodeType::Text | NodeType::EntityReference => {
+                self.node.remove_child(child);
+                Ok(())
+            }
+            _ => return Err(Error::DOMException(ExceptionCode::HIERARCHY_REQUEST_ERR)),
+        }
+    }
 }
 
 /// `Element` allocated by one `ArenaDocument`.
-pub struct ArenaElement<'a> {
+pub struct Element<'a> {
     object: DOMObject,
     node: ArenaNode,
     tag: QName<'a>,
 }
 
-impl<'a> AsRef<DOMObject> for ArenaElement<'a> {
+impl<'a> AsRef<DOMObject> for Element<'a> {
     fn as_ref(&self) -> &DOMObject {
         &self.object
     }
 }
 
-impl<'a> ArenaElement<'a> {
+impl<'a> Element<'a> {
     fn new(object: DOMObject, tag: QName<'a>) -> Self {
         Self {
             object,
@@ -183,20 +200,20 @@ impl<'a> ArenaElement<'a> {
 }
 
 /// `ProcessingInstruction` allocated by one `ArenaDocument`.
-pub struct ArenaProcessingInstruction<'a> {
+pub struct ProcessingInstruction<'a> {
     object: DOMObject,
     node: ArenaNode,
     target: Cow<'a, str>,
     data: Cow<'a, str>,
 }
 
-impl<'a> AsRef<DOMObject> for ArenaProcessingInstruction<'a> {
+impl<'a> AsRef<DOMObject> for ProcessingInstruction<'a> {
     fn as_ref(&self) -> &DOMObject {
         &self.object
     }
 }
 
-impl<'a> ArenaProcessingInstruction<'a> {
+impl<'a> ProcessingInstruction<'a> {
     fn new(object: DOMObject, target: Cow<'a, str>, data: Cow<'a, str>) -> Self {
         Self {
             object,
@@ -218,19 +235,48 @@ impl<'a> ArenaProcessingInstruction<'a> {
 }
 
 /// `Comment` allocated by one `ArenaDocument`.
-pub struct ArenaComment<'a> {
+pub struct Comment<'a> {
     object: DOMObject,
     node: ArenaNode,
     data: Cow<'a, str>,
 }
 
-impl<'a> AsRef<DOMObject> for ArenaComment<'a> {
+impl<'a> AsRef<DOMObject> for Comment<'a> {
     fn as_ref(&self) -> &DOMObject {
         &self.object
     }
 }
 
-impl<'a> ArenaComment<'a> {
+impl<'a> Comment<'a> {
+    fn new(object: DOMObject, data: Cow<'a, str>) -> Self {
+        Self {
+            object,
+            node: Default::default(),
+
+            data,
+        }
+    }
+
+    /// Returns the data as str
+    pub fn data(&self) -> &str {
+        &self.data
+    }
+}
+
+/// `CData` allocated by one `ArenaDocument`.
+pub struct CData<'a> {
+    object: DOMObject,
+    node: ArenaNode,
+    data: Cow<'a, str>,
+}
+
+impl<'a> AsRef<DOMObject> for CData<'a> {
+    fn as_ref(&self) -> &DOMObject {
+        &self.object
+    }
+}
+
+impl<'a> CData<'a> {
     fn new(object: DOMObject, data: Cow<'a, str>) -> Self {
         Self {
             object,
@@ -247,19 +293,19 @@ impl<'a> ArenaComment<'a> {
 }
 
 /// `Text` allocated by one `ArenaDocument`.
-pub struct ArenaText<'a> {
+pub struct Text<'a> {
     object: DOMObject,
     node: ArenaNode,
     data: Cow<'a, str>,
 }
 
-impl<'a> AsRef<DOMObject> for ArenaText<'a> {
+impl<'a> AsRef<DOMObject> for Text<'a> {
     fn as_ref(&self) -> &DOMObject {
         &self.object
     }
 }
 
-impl<'a> ArenaText<'a> {
+impl<'a> Text<'a> {
     fn new(object: DOMObject, data: Cow<'a, str>) -> Self {
         Self {
             object,
@@ -276,20 +322,20 @@ impl<'a> ArenaText<'a> {
 }
 
 /// `Notation` allocated by one `ArenaDocument`.
-pub struct ArenaNotation<'a> {
+pub struct Notation<'a> {
     object: DOMObject,
     node: ArenaNode,
     public_id: Cow<'a, str>,
     system_id: Cow<'a, str>,
 }
 
-impl<'a> AsRef<DOMObject> for ArenaNotation<'a> {
+impl<'a> AsRef<DOMObject> for Notation<'a> {
     fn as_ref(&self) -> &DOMObject {
         &self.object
     }
 }
 
-impl<'a> ArenaNotation<'a> {
+impl<'a> Notation<'a> {
     fn new(object: DOMObject, target: Cow<'a, str>, data: Cow<'a, str>) -> Self {
         Self {
             object,
@@ -311,7 +357,7 @@ impl<'a> ArenaNotation<'a> {
 }
 
 /// `Entity` allocated by one `ArenaDocument`.
-pub struct ArenaEntity<'a> {
+pub struct Entity<'a> {
     object: DOMObject,
     node: ArenaNode,
     notation_name: Option<Cow<'a, str>>,
@@ -319,13 +365,13 @@ pub struct ArenaEntity<'a> {
     system_id: Cow<'a, str>,
 }
 
-impl<'a> AsRef<DOMObject> for ArenaEntity<'a> {
+impl<'a> AsRef<DOMObject> for Entity<'a> {
     fn as_ref(&self) -> &DOMObject {
         &self.object
     }
 }
 
-impl<'a> ArenaEntity<'a> {
+impl<'a> Entity<'a> {
     fn new(
         object: DOMObject,
         public_id: Cow<'a, str>,
@@ -358,7 +404,7 @@ impl<'a> ArenaEntity<'a> {
 }
 
 /// `DocumentType` allocated by one `ArenaDocument`.
-pub struct ArenaDocumentType<'a> {
+pub struct DocumentType<'a> {
     object: DOMObject,
     node: ArenaNode,
     internal_subset: Cow<'a, str>,
@@ -366,13 +412,13 @@ pub struct ArenaDocumentType<'a> {
     system_id: Cow<'a, str>,
 }
 
-impl<'a> AsRef<DOMObject> for ArenaDocumentType<'a> {
+impl<'a> AsRef<DOMObject> for DocumentType<'a> {
     fn as_ref(&self) -> &DOMObject {
         &self.object
     }
 }
 
-impl<'a> ArenaDocumentType<'a> {
+impl<'a> DocumentType<'a> {
     fn new(
         object: DOMObject,
         public_id: Cow<'a, str>,
@@ -406,20 +452,21 @@ impl<'a> ArenaDocumentType<'a> {
 
 /// A DOM `Document` implementation with arena memory managerment.
 #[derive(Default)]
-pub struct ArenaDocument<'a> {
+pub struct Document<'a> {
     this_node: ArenaNode,
-    doc_types: Vec<ArenaDocumentType<'a>>,
-    els: Vec<ArenaElement<'a>>,
-    attrs: Vec<ArenaAttr<'a>>,
+    doc_types: Vec<DocumentType<'a>>,
+    els: Vec<Element<'a>>,
+    attrs: Vec<Attr<'a>>,
     nss: Vec<ArenaNamespace<'a>>,
-    pis: Vec<ArenaProcessingInstruction<'a>>,
-    cms: Vec<ArenaComment<'a>>,
-    texts: Vec<ArenaText<'a>>,
-    notations: Vec<ArenaNotation<'a>>,
-    entities: Vec<ArenaEntity<'a>>,
+    pis: Vec<ProcessingInstruction<'a>>,
+    cms: Vec<Comment<'a>>,
+    texts: Vec<Text<'a>>,
+    notations: Vec<Notation<'a>>,
+    entities: Vec<Entity<'a>>,
+    cdatas: Vec<CData<'a>>,
 }
 
-impl<'a> ArenaDocument<'a> {
+impl<'a> Document<'a> {
     fn gc_mark(&mut self, object: &DOMObject) {
         match object.node_type() {
             NodeType::Element => {
@@ -437,6 +484,12 @@ impl<'a> ArenaDocument<'a> {
                     return Err(Error::DOMException(ExceptionCode::HIERARCHY_REQUEST_ERR));
                 }
 
+                self.this_node.remove_child(&child);
+                self.this_node.append_child(child);
+
+                Ok(())
+            }
+            NodeType::ProcessingInstruction | NodeType::Comment => {
                 self.this_node.remove_child(&child);
                 self.this_node.append_child(child);
 
@@ -545,9 +598,22 @@ impl<'a> ArenaDocument<'a> {
 
         Ok(())
     }
+
+    /// Attach a new child to one element node.
+    fn append_attr(&mut self, parent: &DOMObject, child: DOMObject) -> Result<()> {
+        assert_eq!(parent.node_type(), NodeType::Attribute);
+
+        self.attrs
+            .iter_mut()
+            .find(|el| el.object == *parent)
+            .ok_or(Error::DOMException(ExceptionCode::NOT_FOUND_ERR))?
+            .append_child(child)?;
+
+        Ok(())
+    }
 }
 
-impl<'a> ArenaDocument<'a> {
+impl<'a> Document<'a> {
     /// Returns nodes allocated by this `Document` includes unused ones.
     pub fn allocated(&self) -> usize {
         self.els.len() + self.nss.len() + self.attrs.len()
@@ -666,6 +732,17 @@ impl<'a> ArenaDocument<'a> {
         }
 
         self.doc_types = doc_types;
+
+        // check CData list.
+        let mut cdatas = vec![];
+
+        for mut cdata in self.cdatas.drain(..) {
+            if cdata.node.check_gc_state() {
+                cdatas.push(cdata);
+            }
+        }
+
+        self.cdatas = cdatas;
     }
 
     /// Create a new `Element` node.
@@ -676,7 +753,7 @@ impl<'a> ArenaDocument<'a> {
     {
         let object = DOMObject::new(self.els.len(), NodeType::Element);
 
-        let el = ArenaElement::new(object.clone(), tag.try_into()?);
+        let el = Element::new(object.clone(), tag.try_into()?);
 
         self.els.push(el);
 
@@ -692,7 +769,7 @@ impl<'a> ArenaDocument<'a> {
     {
         let object = DOMObject::new(self.els.len(), NodeType::Attribute);
 
-        let attr = ArenaAttr::new(object.clone(), tag.try_into()?, value.into());
+        let attr = Attr::new(object.clone(), tag.try_into()?, value.into());
 
         self.attrs.push(attr);
 
@@ -722,7 +799,7 @@ impl<'a> ArenaDocument<'a> {
     {
         let object = DOMObject::new(self.els.len(), NodeType::ProcessingInstruction);
 
-        let pi = ArenaProcessingInstruction::new(object.clone(), target.into(), data.into());
+        let pi = ProcessingInstruction::new(object.clone(), target.into(), data.into());
 
         self.pis.push(pi);
 
@@ -737,7 +814,7 @@ impl<'a> ArenaDocument<'a> {
     {
         let object = DOMObject::new(self.els.len(), NodeType::Notation);
 
-        let notation = ArenaNotation::new(object.clone(), public_id.into(), system_id.into());
+        let notation = Notation::new(object.clone(), public_id.into(), system_id.into());
 
         self.notations.push(notation);
 
@@ -757,7 +834,7 @@ impl<'a> ArenaDocument<'a> {
     {
         let object = DOMObject::new(self.els.len(), NodeType::Entity);
 
-        let entity = ArenaEntity::new(
+        let entity = Entity::new(
             object.clone(),
             public_id.into(),
             system_id.into(),
@@ -776,9 +853,23 @@ impl<'a> ArenaDocument<'a> {
     {
         let object = DOMObject::new(self.els.len(), NodeType::Comment);
 
-        let cm = ArenaComment::new(object.clone(), data.into());
+        let cm = Comment::new(object.clone(), data.into());
 
         self.cms.push(cm);
+
+        Ok(object)
+    }
+
+    /// Create a new `CData` node.
+    pub fn create_cdata<D>(&mut self, data: D) -> Result<DOMObject>
+    where
+        D: Into<Cow<'a, str>>,
+    {
+        let object = DOMObject::new(self.els.len(), NodeType::CData);
+
+        let cdata = CData::new(object.clone(), data.into());
+
+        self.cdatas.push(cdata);
 
         Ok(object)
     }
@@ -790,7 +881,7 @@ impl<'a> ArenaDocument<'a> {
     {
         let object = DOMObject::new(self.els.len(), NodeType::Text);
 
-        let text = ArenaText::new(object.clone(), data.into());
+        let text = Text::new(object.clone(), data.into());
 
         self.texts.push(text);
 
@@ -811,7 +902,7 @@ impl<'a> ArenaDocument<'a> {
     {
         let object = DOMObject::new(self.els.len(), NodeType::DocumentType);
 
-        let doc_type = ArenaDocumentType::new(
+        let doc_type = DocumentType::new(
             object.clone(),
             public_id.into(),
             system_id.into(),
@@ -839,6 +930,9 @@ impl<'a> ArenaDocument<'a> {
             NodeType::Element => {
                 return self.append_element(parent, child);
             }
+            NodeType::Attribute => {
+                return self.append_attr(parent, child);
+            }
             _ => unimplemented!(),
         }
     }
@@ -862,28 +956,28 @@ impl<'a> ArenaDocument<'a> {
     }
 
     /// Returns a immutable reference to [`ArenaElement`]
-    pub fn element(&self, object: &DOMObject) -> Option<&ArenaElement<'a>> {
+    pub fn element(&self, object: &DOMObject) -> Option<&Element<'a>> {
         assert_eq!(object.node_type(), NodeType::Element);
 
         self.els.iter().find(|el| el.object == *object)
     }
 
     /// Returns a mutable reference to [`ArenaElement`]
-    pub fn element_mut(&mut self, object: &DOMObject) -> Option<&mut ArenaElement<'a>> {
+    pub fn element_mut(&mut self, object: &DOMObject) -> Option<&mut Element<'a>> {
         assert_eq!(object.node_type(), NodeType::Element);
 
         self.els.iter_mut().find(|el| el.object == *object)
     }
 
     /// Returns a immutable reference to [`ArenaAttr`]
-    pub fn attr(&self, object: &DOMObject) -> Option<&ArenaAttr<'a>> {
+    pub fn attr(&self, object: &DOMObject) -> Option<&Attr<'a>> {
         assert_eq!(object.node_type(), NodeType::Attribute);
 
         self.attrs.iter().find(|el| el.object == *object)
     }
 
     /// Returns a mutable reference to [`ArenaAttr`]
-    pub fn attr_mut(&mut self, object: &DOMObject) -> Option<&mut ArenaAttr<'a>> {
+    pub fn attr_mut(&mut self, object: &DOMObject) -> Option<&mut Attr<'a>> {
         assert_eq!(object.node_type(), NodeType::Attribute);
 
         self.attrs.iter_mut().find(|el| el.object == *object)
@@ -904,87 +998,101 @@ impl<'a> ArenaDocument<'a> {
     }
 
     /// Returns a immutable reference to [`ArenaProcessingInstruction`]
-    pub fn pi(&self, object: &DOMObject) -> Option<&ArenaProcessingInstruction<'a>> {
+    pub fn pi(&self, object: &DOMObject) -> Option<&ProcessingInstruction<'a>> {
         assert_eq!(object.node_type(), NodeType::ProcessingInstruction);
 
         self.pis.iter().find(|el| el.object == *object)
     }
 
     /// Returns a mutable reference to [`ArenaProcessingInstruction`]
-    pub fn pi_mut(&mut self, object: &DOMObject) -> Option<&mut ArenaProcessingInstruction<'a>> {
+    pub fn pi_mut(&mut self, object: &DOMObject) -> Option<&mut ProcessingInstruction<'a>> {
         assert_eq!(object.node_type(), NodeType::ProcessingInstruction);
 
         self.pis.iter_mut().find(|el| el.object == *object)
     }
 
     /// Returns a immutable reference to [`ArenaComment`]
-    pub fn comment(&self, object: &DOMObject) -> Option<&ArenaComment<'a>> {
+    pub fn comment(&self, object: &DOMObject) -> Option<&Comment<'a>> {
         assert_eq!(object.node_type(), NodeType::Comment);
 
         self.cms.iter().find(|el| el.object == *object)
     }
 
     /// Returns a mutable reference to [`ArenaComment`]
-    pub fn comment_mut(&mut self, object: &DOMObject) -> Option<&mut ArenaComment<'a>> {
+    pub fn comment_mut(&mut self, object: &DOMObject) -> Option<&mut Comment<'a>> {
         assert_eq!(object.node_type(), NodeType::Comment);
 
         self.cms.iter_mut().find(|el| el.object == *object)
     }
 
     /// Returns a immutable reference to [`ArenaText`]
-    pub fn text(&self, object: &DOMObject) -> Option<&ArenaText<'a>> {
+    pub fn text(&self, object: &DOMObject) -> Option<&Text<'a>> {
         assert_eq!(object.node_type(), NodeType::Text);
 
         self.texts.iter().find(|el| el.object == *object)
     }
 
     /// Returns a mutable reference to [`ArenaText`]
-    pub fn text_mut(&mut self, object: &DOMObject) -> Option<&mut ArenaText<'a>> {
+    pub fn text_mut(&mut self, object: &DOMObject) -> Option<&mut Text<'a>> {
         assert_eq!(object.node_type(), NodeType::Text);
 
         self.texts.iter_mut().find(|el| el.object == *object)
     }
 
     /// Returns a immutable reference to [`ArenaNotation`]
-    pub fn notation(&self, object: &DOMObject) -> Option<&ArenaNotation<'a>> {
+    pub fn notation(&self, object: &DOMObject) -> Option<&Notation<'a>> {
         assert_eq!(object.node_type(), NodeType::Notation);
 
         self.notations.iter().find(|el| el.object == *object)
     }
 
     /// Returns a mutable reference to [`ArenaText`]
-    pub fn notation_mut(&mut self, object: &DOMObject) -> Option<&mut ArenaNotation<'a>> {
+    pub fn notation_mut(&mut self, object: &DOMObject) -> Option<&mut Notation<'a>> {
         assert_eq!(object.node_type(), NodeType::Notation);
 
         self.notations.iter_mut().find(|el| el.object == *object)
     }
 
     /// Returns a immutable reference to [`ArenaEntity`]
-    pub fn entity(&self, object: &DOMObject) -> Option<&ArenaEntity<'a>> {
+    pub fn entity(&self, object: &DOMObject) -> Option<&Entity<'a>> {
         assert_eq!(object.node_type(), NodeType::Entity);
 
         self.entities.iter().find(|el| el.object == *object)
     }
 
     /// Returns a mutable reference to [`ArenaEntity`]
-    pub fn entity_mut(&mut self, object: &DOMObject) -> Option<&mut ArenaEntity<'a>> {
+    pub fn entity_mut(&mut self, object: &DOMObject) -> Option<&mut Entity<'a>> {
         assert_eq!(object.node_type(), NodeType::Entity);
 
         self.entities.iter_mut().find(|el| el.object == *object)
     }
 
     /// Returns a immutable reference to [`ArenaDocumentType`]
-    pub fn doc_type(&self, object: &DOMObject) -> Option<&ArenaDocumentType<'a>> {
+    pub fn doc_type(&self, object: &DOMObject) -> Option<&DocumentType<'a>> {
         assert_eq!(object.node_type(), NodeType::DocumentType);
 
         self.doc_types.iter().find(|el| el.object == *object)
     }
 
     /// Returns a mutable reference to [`ArenaEntity`]
-    pub fn doc_type_mut(&mut self, object: &DOMObject) -> Option<&mut ArenaDocumentType<'a>> {
+    pub fn doc_type_mut(&mut self, object: &DOMObject) -> Option<&mut DocumentType<'a>> {
         assert_eq!(object.node_type(), NodeType::DocumentType);
 
         self.doc_types.iter_mut().find(|el| el.object == *object)
+    }
+
+    /// Returns a immutable reference to [`ArenaCData`]
+    pub fn cdata(&self, object: &DOMObject) -> Option<&CData<'a>> {
+        assert_eq!(object.node_type(), NodeType::DocumentType);
+
+        self.cdatas.iter().find(|el| el.object == *object)
+    }
+
+    /// Returns a mutable reference to [`ArenaCData`]
+    pub fn cdata_mut(&mut self, object: &DOMObject) -> Option<&mut CData<'a>> {
+        assert_eq!(object.node_type(), NodeType::DocumentType);
+
+        self.cdatas.iter_mut().find(|el| el.object == *object)
     }
 }
 
@@ -1008,11 +1116,11 @@ impl<'a> Iterator for NodeIterator<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::ArenaDocument;
+    use super::Document;
 
     #[test]
     fn test_gc() {
-        let mut doc = ArenaDocument::default();
+        let mut doc = Document::default();
 
         let element = doc.create_element("hello").unwrap();
 
@@ -1033,7 +1141,7 @@ mod tests {
 
     #[test]
     fn doc_maximum_of_one() {
-        let mut doc = ArenaDocument::default();
+        let mut doc = Document::default();
 
         let element = doc.create_element("hello").unwrap();
 
@@ -1051,8 +1159,28 @@ mod tests {
     }
 
     #[test]
+    fn doc_append() {
+        let mut doc = Document::default();
+
+        {
+            let element = doc.create_element("hello").unwrap();
+            doc.append_child(None, element).unwrap();
+        }
+
+        {
+            let node = doc.create_pi("hello", "world").unwrap();
+            doc.append_child(None, node).unwrap();
+        }
+
+        {
+            let node = doc.create_comment("hello").unwrap();
+            doc.append_child(None, node).unwrap();
+        }
+    }
+
+    #[test]
     fn el_append() {
-        let mut doc = ArenaDocument::default();
+        let mut doc = Document::default();
 
         let element = doc.create_element("hello").unwrap();
 
@@ -1103,5 +1231,18 @@ mod tests {
         }
 
         doc.append_child(None, element).unwrap();
+    }
+
+    #[test]
+    fn attr_append() {
+        let mut doc = Document::default();
+
+        {
+            let attr = doc.create_attr("color", "#ff00ff").unwrap();
+
+            let text = doc.create_text("hello").unwrap();
+
+            doc.append_child(Some(&attr), text).unwrap();
+        }
     }
 }

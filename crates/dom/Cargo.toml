@@ -1,5 +1,5 @@
 [package]
-description = "Dom api implementation of rexml."
+description = "A low level DOM  Level 2 Core Specification implementation with arena memory managerment"
 documentation = "https://docs.rs/rexml-dom"
 edition.workspace = true
 license = "MIT"

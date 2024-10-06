@@ -16,4 +16,5 @@ pub use qname::*;
 mod object;
 pub use object::*;
 
-pub mod arena;
+mod arena;
+pub use arena::*;
