@@ -16,5 +16,4 @@ pub use qname::*;
 mod object;
 pub use object::*;
 
-mod arena;
-pub use arena::*;
+pub mod dom_api;
