@@ -2,12 +2,15 @@
 
 use std::borrow::Cow;
 
-use crate::{DOMObject, NodeType, QName};
+use crate::{NodeType, QName};
 
 /// A `Node` interface for Document Object Model (DOM) Level 2 Core
 pub trait Node<'doc> {
+    /// Node reference type.
+    type Ref: 'static;
+
     /// NodeList returns by [`children`](Node::children) function.
-    type NodeList<'a>: Iterator<Item = &'a DOMObject>
+    type NodeList<'a>: Iterator<Item = &'a Self::Ref>
     where
         Self: 'a;
 
@@ -19,23 +22,23 @@ pub trait Node<'doc> {
     /// Returns the [`type`](NodeType) of this node.
     fn node_type(&self) -> NodeType;
 
-    /// Returns the [`DOMObject`] of parent node.
-    fn parent(&self) -> Option<DOMObject>;
+    /// Returns the `Ref` of parent node.
+    fn parent(&self) -> Option<&Self::Ref>;
 
     /// Returns the iterator over children node list.
     fn children(&self) -> Self::NodeList<'_>;
 
     /// The first child of this node. If there is no such node, this returns null.
-    fn first_child(&self) -> Option<&DOMObject>;
+    fn first_child(&self) -> Option<&Self::Ref>;
 
     /// The last child of this node. If there is no such node, this returns null.
-    fn last_child(&self) -> Option<&DOMObject>;
+    fn last_child(&self) -> Option<&Self::Ref>;
 
     /// The node immediately preceding this node. If there is no such node, this returns null.
-    fn previous_sibling(&self) -> Option<&DOMObject>;
+    fn previous_sibling(&self) -> Option<&Self::Ref>;
 
     /// The node immediately following this node. If there is no such node, this returns null.
-    fn next_sibling(&self) -> Option<&DOMObject>;
+    fn next_sibling(&self) -> Option<&Self::Ref>;
 
     /// For nodes of any type other than ELEMENT_NODE and ATTRIBUTE_NODE and nodes created with a DOM Level 1 method, such as createElement from the Document interface, this is always null.
     fn qname(&self) -> Option<&QName<'_>>;
@@ -103,39 +106,75 @@ pub trait Document<'doc>: Node<'doc> {
         Self: 'a;
 
     /// Create a new `Element` node associated with this document.
-    fn create_element<T>(&mut self, tag: T) -> Result<DOMObject, Self::Error>
+    fn create_element<T>(&mut self, tag: T) -> Result<Self::Ref, Self::Error>
     where
         T: TryInto<QName<'doc>>;
 
+    /// Get immutable `Element` node by reference.
+    fn element(&self, of: Self::Ref) -> Option<&Self::Element<'_>>;
+
+    /// Get mutable `Element` node by reference.
+    fn element_mut(&mut self, of: Self::Ref) -> Option<&mut Self::Element<'_>>;
+
     /// Create a new `Attr` node associated with this document.
-    fn create_attr<T, V>(&mut self, tag: T, value: V) -> Result<DOMObject, Self::Error>;
+    fn create_attr<T, V>(&mut self, tag: T, value: V) -> Result<Self::Ref, Self::Error>;
+
+    /// Get immutable `Attr` node by reference.
+    fn attr(&self, of: Self::Ref) -> Option<&Self::Attr<'_>>;
+
+    /// Get mutable `Attr` node by reference.
+    fn attr_mut(&mut self, of: Self::Ref) -> Option<&mut Self::Attr<'_>>;
 
     /// Create a new `Namespace` node associated with this document.
-    fn create_ns<P, H>(&mut self, prefix: P, href: H) -> Result<DOMObject, Self::Error>
+    fn create_ns<P, H>(&mut self, prefix: P, href: H) -> Result<Self::Ref, Self::Error>
     where
         P: Into<Cow<'doc, str>>,
         H: Into<Cow<'doc, str>>;
 
+    /// Get immutable `Namespace` node by reference.
+    fn ns(&self, of: Self::Ref) -> Option<&Self::Namespace<'_>>;
+
+    /// Get mutable `Namespace` node by reference.
+    fn ns_mut(&mut self, of: Self::Ref) -> Option<&mut Self::Namespace<'_>>;
+
     /// Create a new `ProcessingInstruction` node associated with this document.
-    fn create_pi<T, D>(&mut self, target: T, data: D) -> Result<DOMObject, Self::Error>
+    fn create_pi<T, D>(&mut self, target: T, data: D) -> Result<Self::Ref, Self::Error>
     where
         T: Into<Cow<'doc, str>>,
         D: Into<Cow<'doc, str>>;
+
+    /// Get immutable `ProcessingInstruction` node by reference.
+    fn pi(&self, of: Self::Ref) -> Option<&Self::ProcessingInstruction<'_>>;
+
+    /// Get mutable `ProcessingInstruction` node by reference.
+    fn pi_mut(&mut self, of: Self::Ref) -> Option<&mut Self::ProcessingInstruction<'_>>;
 
     /// Create a new `Notation` node associated with this document.
     fn create_notation<P, S>(
         &mut self,
         public_id: P,
         system_id: S,
-    ) -> Result<DOMObject, Self::Error>
+    ) -> Result<Self::Ref, Self::Error>
     where
         P: Into<Cow<'doc, str>>,
         S: Into<Cow<'doc, str>>;
 
+    /// Get immutable `Notation` node by reference.
+    fn notation(&self, of: Self::Ref) -> Option<&Self::Notation<'_>>;
+
+    /// Get mutable `Notation` node by reference.
+    fn notation_mut(&mut self, of: Self::Ref) -> Option<&mut Self::Notation<'_>>;
+
     /// Create a new `Comment` node associated with this document.
-    fn create_comment<D>(&mut self, data: D) -> Result<DOMObject, Self::Error>
+    fn create_comment<D>(&mut self, data: D) -> Result<Self::Ref, Self::Error>
     where
         D: Into<Cow<'doc, str>>;
+
+    /// Get immutable `Comment` node by reference.
+    fn comment(&self, of: Self::Ref) -> Option<&Self::Comment<'_>>;
+
+    /// Get mutable `Comment` node by reference.
+    fn comment_mut(&mut self, of: Self::Ref) -> Option<&mut Self::Comment<'_>>;
 
     /// Create a new `Entity` node associated with this document.
     fn create_entity<P, S>(
@@ -143,30 +182,54 @@ pub trait Document<'doc>: Node<'doc> {
         public_id: P,
         system_id: S,
         notation_name: Option<Cow<'_, str>>,
-    ) -> Result<DOMObject, Self::Error>
+    ) -> Result<Self::Ref, Self::Error>
     where
         P: Into<Cow<'doc, str>>,
         S: Into<Cow<'doc, str>>;
 
+    /// Get immutable `Entity` node by reference.
+    fn entity(&self, of: Self::Ref) -> Option<&Self::Entity<'_>>;
+
+    /// Get mutable `Entity` node by reference.
+    fn entity_mut(&mut self, of: Self::Ref) -> Option<&mut Self::Entity<'_>>;
+
     /// Create a new `CData` node associated with this document.
-    fn create_cdata<D>(&mut self, data: D) -> Result<DOMObject, Self::Error>
+    fn create_cdata<D>(&mut self, data: D) -> Result<Self::Ref, Self::Error>
     where
         D: Into<Cow<'doc, str>>;
+
+    /// Get immutable `Entity` node by reference.
+    fn cdata(&self, of: Self::Ref) -> Option<&Self::CData<'_>>;
+
+    /// Get mutable `Entity` node by reference.
+    fn cdata_mut(&mut self, of: Self::Ref) -> Option<&mut Self::CData<'_>>;
 
     /// Create a new `Text` node associated with this document.
-    fn create_text<D>(&mut self, data: D) -> Result<DOMObject, Self::Error>
+    fn create_text<D>(&mut self, data: D) -> Result<Self::Ref, Self::Error>
     where
         D: Into<Cow<'doc, str>>;
 
+    /// Get immutable `Text` node by reference.
+    fn text(&self, of: Self::Ref) -> Option<&Self::Text<'_>>;
+
+    /// Get mutable `Text` node by reference.
+    fn text_mut(&mut self, of: Self::Ref) -> Option<&mut Self::Text<'_>>;
+
     /// Create a new `DocumentType` node.
-    fn create_document_type<P, S, I>(
+    fn create_doctype<P, S, I>(
         &mut self,
         public_id: P,
         system_id: S,
         internal_subset: I,
-    ) -> Result<DOMObject, Self::Error>
+    ) -> Result<Self::Ref, Self::Error>
     where
         P: Into<Cow<'doc, str>>,
         S: Into<Cow<'doc, str>>,
         I: Into<Cow<'doc, str>>;
+
+    /// Get immutable `DocumentType` node by reference.
+    fn doctype(&self, of: Self::Ref) -> Option<&Self::DocumentType<'_>>;
+
+    /// Get mutable `DocumentType` node by reference.
+    fn doctype_mut(&mut self, of: Self::Ref) -> Option<&mut Self::DocumentType<'_>>;
 }
