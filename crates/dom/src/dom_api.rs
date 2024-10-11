@@ -56,7 +56,7 @@ pub trait Document<'doc>: Node<'doc> {
     type Error: std::error::Error;
 
     /// `Element` type returns by this trait.
-    type Element<'a>
+    type Element<'a>: Element<'a, Error = Self::Error>
     where
         Self: 'a;
 
@@ -117,7 +117,10 @@ pub trait Document<'doc>: Node<'doc> {
     fn element_mut(&mut self, of: Self::Ref) -> Option<&mut Self::Element<'_>>;
 
     /// Create a new `Attr` node associated with this document.
-    fn create_attr<T, V>(&mut self, tag: T, value: V) -> Result<Self::Ref, Self::Error>;
+    fn create_attr<T, V>(&mut self, tag: T, value: V) -> Result<Self::Ref, Self::Error>
+    where
+        T: TryInto<QName<'doc>>,
+        V: Into<Cow<'doc, str>>;
 
     /// Get immutable `Attr` node by reference.
     fn attr(&self, of: Self::Ref) -> Option<&Self::Attr<'_>>;
@@ -232,4 +235,19 @@ pub trait Document<'doc>: Node<'doc> {
 
     /// Get mutable `DocumentType` node by reference.
     fn doctype_mut(&mut self, of: Self::Ref) -> Option<&mut Self::DocumentType<'_>>;
+}
+
+/// A `Element` node must implement this trait.
+pub trait Element<'doc>: Node<'doc> {
+    type Error: std::error::Error;
+    /// Retrieves an attribute value by name.
+    fn get_attr<Q>(&self, name: Q) -> Result<Option<&Self::Ref>, Self::Error>
+    where
+        Q: TryInto<QName<'doc>>;
+
+    /// Remove an attribute value by qualified name.
+    fn remove_attr<Q>(&mut self, name: Q) -> Result<Option<&Self::Ref>, Self::Error>;
+
+
+    fn set_attr<Q>
 }
