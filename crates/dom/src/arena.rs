@@ -1,4 +1,4 @@
-//! This mod provide a DOM implementation with arena memory managerment.
+//! This mod provide a DOM implementation with  memory managerment.
 
 use std::{borrow::Cow, slice::Iter};
 
@@ -6,27 +6,27 @@ use crate::{DOMObject, Error, ExceptionCode, NodeType, QName, Result};
 
 /// Use by gc process.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-enum ArenaGcState {
+enum GcState {
     Unmark,
     Marked,
 }
 
-impl Default for ArenaGcState {
+impl Default for GcState {
     fn default() -> Self {
         Self::Unmark
     }
 }
 
-/// A DOM node is allocated by and belongs to one [`DOMArena`]
+/// A DOM node is allocated by and belongs to one [`DOM`]
 #[derive(Default)]
-struct ArenaNode {
-    gc_state: ArenaGcState,
+struct Node {
+    gc_state: GcState,
     #[allow(unused)]
     parent: Option<DOMObject>,
     children: Vec<DOMObject>,
 }
 
-impl ArenaNode {
+impl Node {
     fn append_child(&mut self, child: DOMObject) {
         self.children.push(child);
     }
@@ -53,12 +53,12 @@ impl ArenaNode {
     }
 
     fn gc_mark(&mut self) {
-        self.gc_state = ArenaGcState::Marked;
+        self.gc_state = GcState::Marked;
     }
 
     fn check_gc_state(&mut self) -> bool {
-        if self.gc_state == ArenaGcState::Marked {
-            self.gc_state = ArenaGcState::Unmark;
+        if self.gc_state == GcState::Marked {
+            self.gc_state = GcState::Unmark;
             true
         } else {
             false
@@ -67,11 +67,11 @@ impl ArenaNode {
 }
 
 /// This corresponds to the namespace extension.
-pub struct ArenaNamespace<'a> {
+pub struct Namespace<'a> {
     /// object reference.
     object: DOMObject,
     /// mxin node.
-    node: ArenaNode,
+    node: Node,
     /// The namespace prefix
     prefix: Cow<'a, str>,
     /// The namespace href
@@ -79,7 +79,7 @@ pub struct ArenaNamespace<'a> {
 }
 
 #[allow(unused)]
-impl<'a> ArenaNamespace<'a> {
+impl<'a> Namespace<'a> {
     fn new(object: DOMObject, prefix: Cow<'a, str>, href: Cow<'a, str>) -> Self {
         Self {
             prefix,
@@ -103,7 +103,7 @@ impl<'a> ArenaNamespace<'a> {
 /// Attribute of one element.
 pub struct Attr<'a> {
     object: DOMObject,
-    node: ArenaNode,
+    node: Node,
     name: QName<'a>,
     value: Cow<'a, str>,
 }
@@ -146,10 +146,10 @@ impl<'a> Attr<'a> {
     }
 }
 
-/// `Element` allocated by one `ArenaDocument`.
+/// `Element` allocated by one `Document`.
 pub struct Element<'a> {
     object: DOMObject,
-    node: ArenaNode,
+    node: Node,
     tag: QName<'a>,
 }
 
@@ -199,10 +199,10 @@ impl<'a> Element<'a> {
     }
 }
 
-/// `ProcessingInstruction` allocated by one `ArenaDocument`.
+/// `ProcessingInstruction` allocated by one `Document`.
 pub struct ProcessingInstruction<'a> {
     object: DOMObject,
-    node: ArenaNode,
+    node: Node,
     target: Cow<'a, str>,
     data: Cow<'a, str>,
 }
@@ -234,10 +234,10 @@ impl<'a> ProcessingInstruction<'a> {
     }
 }
 
-/// `Comment` allocated by one `ArenaDocument`.
+/// `Comment` allocated by one `Document`.
 pub struct Comment<'a> {
     object: DOMObject,
-    node: ArenaNode,
+    node: Node,
     data: Cow<'a, str>,
 }
 
@@ -263,10 +263,10 @@ impl<'a> Comment<'a> {
     }
 }
 
-/// `CData` allocated by one `ArenaDocument`.
+/// `CData` allocated by one `Document`.
 pub struct CData<'a> {
     object: DOMObject,
-    node: ArenaNode,
+    node: Node,
     data: Cow<'a, str>,
 }
 
@@ -292,10 +292,10 @@ impl<'a> CData<'a> {
     }
 }
 
-/// `Text` allocated by one `ArenaDocument`.
+/// `Text` allocated by one `Document`.
 pub struct Text<'a> {
     object: DOMObject,
-    node: ArenaNode,
+    node: Node,
     data: Cow<'a, str>,
 }
 
@@ -321,10 +321,10 @@ impl<'a> Text<'a> {
     }
 }
 
-/// `Notation` allocated by one `ArenaDocument`.
+/// `Notation` allocated by one `Document`.
 pub struct Notation<'a> {
     object: DOMObject,
-    node: ArenaNode,
+    node: Node,
     public_id: Cow<'a, str>,
     system_id: Cow<'a, str>,
 }
@@ -356,10 +356,10 @@ impl<'a> Notation<'a> {
     }
 }
 
-/// `Entity` allocated by one `ArenaDocument`.
+/// `Entity` allocated by one `Document`.
 pub struct Entity<'a> {
     object: DOMObject,
-    node: ArenaNode,
+    node: Node,
     notation_name: Option<Cow<'a, str>>,
     public_id: Cow<'a, str>,
     system_id: Cow<'a, str>,
@@ -403,10 +403,10 @@ impl<'a> Entity<'a> {
     }
 }
 
-/// `DocumentType` allocated by one `ArenaDocument`.
+/// `DocumentType` allocated by one `Document`.
 pub struct DocumentType<'a> {
     object: DOMObject,
-    node: ArenaNode,
+    node: Node,
     internal_subset: Cow<'a, str>,
     public_id: Cow<'a, str>,
     system_id: Cow<'a, str>,
@@ -450,14 +450,14 @@ impl<'a> DocumentType<'a> {
     }
 }
 
-/// A DOM `Document` implementation with arena memory managerment.
+/// A DOM `Document` implementation with  memory managerment.
 #[derive(Default)]
 pub struct Document<'a> {
-    this_node: ArenaNode,
+    this_node: Node,
     doc_types: Vec<DocumentType<'a>>,
     els: Vec<Element<'a>>,
     attrs: Vec<Attr<'a>>,
-    nss: Vec<ArenaNamespace<'a>>,
+    nss: Vec<Namespace<'a>>,
     pis: Vec<ProcessingInstruction<'a>>,
     cms: Vec<Comment<'a>>,
     texts: Vec<Text<'a>>,
@@ -784,7 +784,7 @@ impl<'a> Document<'a> {
     {
         let object = DOMObject::new(self.els.len(), NodeType::Namespace);
 
-        let ns = ArenaNamespace::new(object.clone(), prefix.into(), href.into());
+        let ns = Namespace::new(object.clone(), prefix.into(), href.into());
 
         self.nss.push(ns);
 
@@ -955,140 +955,140 @@ impl<'a> Document<'a> {
         }
     }
 
-    /// Returns a immutable reference to [`ArenaElement`]
+    /// Returns a immutable reference to [`Element`]
     pub fn element(&self, object: &DOMObject) -> Option<&Element<'a>> {
         assert_eq!(object.node_type(), NodeType::Element);
 
         self.els.iter().find(|el| el.object == *object)
     }
 
-    /// Returns a mutable reference to [`ArenaElement`]
+    /// Returns a mutable reference to [`Element`]
     pub fn element_mut(&mut self, object: &DOMObject) -> Option<&mut Element<'a>> {
         assert_eq!(object.node_type(), NodeType::Element);
 
         self.els.iter_mut().find(|el| el.object == *object)
     }
 
-    /// Returns a immutable reference to [`ArenaAttr`]
+    /// Returns a immutable reference to [`Attr`]
     pub fn attr(&self, object: &DOMObject) -> Option<&Attr<'a>> {
         assert_eq!(object.node_type(), NodeType::Attribute);
 
         self.attrs.iter().find(|el| el.object == *object)
     }
 
-    /// Returns a mutable reference to [`ArenaAttr`]
+    /// Returns a mutable reference to [`Attr`]
     pub fn attr_mut(&mut self, object: &DOMObject) -> Option<&mut Attr<'a>> {
         assert_eq!(object.node_type(), NodeType::Attribute);
 
         self.attrs.iter_mut().find(|el| el.object == *object)
     }
 
-    /// Returns a immutable reference to [`ArenaNamespace`]
-    pub fn ns(&self, object: &DOMObject) -> Option<&ArenaNamespace<'a>> {
+    /// Returns a immutable reference to [`Namespace`]
+    pub fn ns(&self, object: &DOMObject) -> Option<&Namespace<'a>> {
         assert_eq!(object.node_type(), NodeType::Namespace);
 
         self.nss.iter().find(|el| el.object == *object)
     }
 
-    /// Returns a mutable reference to [`ArenaNamespace`]
-    pub fn ns_mut(&mut self, object: &DOMObject) -> Option<&mut ArenaNamespace<'a>> {
+    /// Returns a mutable reference to [`Namespace`]
+    pub fn ns_mut(&mut self, object: &DOMObject) -> Option<&mut Namespace<'a>> {
         assert_eq!(object.node_type(), NodeType::Namespace);
 
         self.nss.iter_mut().find(|el| el.object == *object)
     }
 
-    /// Returns a immutable reference to [`ArenaProcessingInstruction`]
+    /// Returns a immutable reference to [`ProcessingInstruction`]
     pub fn pi(&self, object: &DOMObject) -> Option<&ProcessingInstruction<'a>> {
         assert_eq!(object.node_type(), NodeType::ProcessingInstruction);
 
         self.pis.iter().find(|el| el.object == *object)
     }
 
-    /// Returns a mutable reference to [`ArenaProcessingInstruction`]
+    /// Returns a mutable reference to [`ProcessingInstruction`]
     pub fn pi_mut(&mut self, object: &DOMObject) -> Option<&mut ProcessingInstruction<'a>> {
         assert_eq!(object.node_type(), NodeType::ProcessingInstruction);
 
         self.pis.iter_mut().find(|el| el.object == *object)
     }
 
-    /// Returns a immutable reference to [`ArenaComment`]
+    /// Returns a immutable reference to [`Comment`]
     pub fn comment(&self, object: &DOMObject) -> Option<&Comment<'a>> {
         assert_eq!(object.node_type(), NodeType::Comment);
 
         self.cms.iter().find(|el| el.object == *object)
     }
 
-    /// Returns a mutable reference to [`ArenaComment`]
+    /// Returns a mutable reference to [`Comment`]
     pub fn comment_mut(&mut self, object: &DOMObject) -> Option<&mut Comment<'a>> {
         assert_eq!(object.node_type(), NodeType::Comment);
 
         self.cms.iter_mut().find(|el| el.object == *object)
     }
 
-    /// Returns a immutable reference to [`ArenaText`]
+    /// Returns a immutable reference to [`Text`]
     pub fn text(&self, object: &DOMObject) -> Option<&Text<'a>> {
         assert_eq!(object.node_type(), NodeType::Text);
 
         self.texts.iter().find(|el| el.object == *object)
     }
 
-    /// Returns a mutable reference to [`ArenaText`]
+    /// Returns a mutable reference to [`Text`]
     pub fn text_mut(&mut self, object: &DOMObject) -> Option<&mut Text<'a>> {
         assert_eq!(object.node_type(), NodeType::Text);
 
         self.texts.iter_mut().find(|el| el.object == *object)
     }
 
-    /// Returns a immutable reference to [`ArenaNotation`]
+    /// Returns a immutable reference to [`Notation`]
     pub fn notation(&self, object: &DOMObject) -> Option<&Notation<'a>> {
         assert_eq!(object.node_type(), NodeType::Notation);
 
         self.notations.iter().find(|el| el.object == *object)
     }
 
-    /// Returns a mutable reference to [`ArenaText`]
+    /// Returns a mutable reference to [`Text`]
     pub fn notation_mut(&mut self, object: &DOMObject) -> Option<&mut Notation<'a>> {
         assert_eq!(object.node_type(), NodeType::Notation);
 
         self.notations.iter_mut().find(|el| el.object == *object)
     }
 
-    /// Returns a immutable reference to [`ArenaEntity`]
+    /// Returns a immutable reference to [`Entity`]
     pub fn entity(&self, object: &DOMObject) -> Option<&Entity<'a>> {
         assert_eq!(object.node_type(), NodeType::Entity);
 
         self.entities.iter().find(|el| el.object == *object)
     }
 
-    /// Returns a mutable reference to [`ArenaEntity`]
+    /// Returns a mutable reference to [`Entity`]
     pub fn entity_mut(&mut self, object: &DOMObject) -> Option<&mut Entity<'a>> {
         assert_eq!(object.node_type(), NodeType::Entity);
 
         self.entities.iter_mut().find(|el| el.object == *object)
     }
 
-    /// Returns a immutable reference to [`ArenaDocumentType`]
+    /// Returns a immutable reference to [`DocumentType`]
     pub fn doc_type(&self, object: &DOMObject) -> Option<&DocumentType<'a>> {
         assert_eq!(object.node_type(), NodeType::DocumentType);
 
         self.doc_types.iter().find(|el| el.object == *object)
     }
 
-    /// Returns a mutable reference to [`ArenaEntity`]
+    /// Returns a mutable reference to [`Entity`]
     pub fn doc_type_mut(&mut self, object: &DOMObject) -> Option<&mut DocumentType<'a>> {
         assert_eq!(object.node_type(), NodeType::DocumentType);
 
         self.doc_types.iter_mut().find(|el| el.object == *object)
     }
 
-    /// Returns a immutable reference to [`ArenaCData`]
+    /// Returns a immutable reference to [`CData`]
     pub fn cdata(&self, object: &DOMObject) -> Option<&CData<'a>> {
         assert_eq!(object.node_type(), NodeType::DocumentType);
 
         self.cdatas.iter().find(|el| el.object == *object)
     }
 
-    /// Returns a mutable reference to [`ArenaCData`]
+    /// Returns a mutable reference to [`CData`]
     pub fn cdata_mut(&mut self, object: &DOMObject) -> Option<&mut CData<'a>> {
         assert_eq!(object.node_type(), NodeType::DocumentType);
 
