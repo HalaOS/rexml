@@ -12,3 +12,5 @@ pub use errors::*;
 
 pub mod block;
 pub mod sax;
+
+mod character;
