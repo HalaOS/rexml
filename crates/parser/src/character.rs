@@ -2,7 +2,7 @@ use nom::{bytes::complete::take_while, character::complete::satisfy, IResult};
 
 use crate::Error;
 
-pub(crate) fn nc_name(value: &str) -> IResult<&str, &str, Error<'_>> {
+pub(crate) fn nc_name<'a>(value: &'a str) -> IResult<&'a str, &'a str, Error<'a>> {
     let (input, _) = satisfy(is_name_start_char)(value)?;
 
     let (input, body) = take_while(is_name_char)(input)?;

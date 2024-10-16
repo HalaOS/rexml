@@ -4,7 +4,7 @@ use nom::Err;
 
 use crate::Error;
 
-/// A parser backend handler to generate parsed result.
+/// A handler used by xml parser to generate parsing result.
 pub trait SaxHandler<'source> {
     type Error: std::error::Error + Into<Err<Error<'source>>>;
 

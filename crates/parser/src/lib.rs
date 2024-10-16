@@ -10,7 +10,9 @@ use std::prelude::v1::*;
 mod errors;
 pub use errors::*;
 
-pub mod block;
-pub mod sax;
+mod sax;
+pub use sax::*;
+
+pub mod str;
 
 mod character;
