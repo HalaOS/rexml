@@ -6,6 +6,7 @@ use nom::{
     combinator::opt,
     IResult,
 };
+use tokens::XmlPEReference;
 
 /// Parsed xml tokens.
 pub mod tokens {
@@ -24,6 +25,14 @@ pub mod tokens {
     /// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
     #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
     pub struct XmlNmToken<'a>(pub &'a str);
+
+    /// A token represents xml/1.1 `PEReference`.
+    ///
+    /// See [`XML_EBNF1.1`] for more information.
+    ///
+    /// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+    #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+    pub struct XmlPEReference<'a>(pub &'a str);
 }
 
 #[allow(unused)]
@@ -62,6 +71,17 @@ pub fn xml_space(value: &str) -> IResult<&str, ()> {
     let (value, _) = take_while1(|c: char| c.is_ascii_whitespace())(value)?;
 
     Ok((value, ()))
+}
+
+/// Parse xml `PEReference` token.
+pub fn xml_pe_reference(value: &str) -> IResult<&str, tokens::XmlPEReference<'_>> {
+    let (value, _) = satisfy(|c| c == '%')(value)?;
+
+    let (value, name) = xml_name(value)?;
+
+    let (value, _) = satisfy(|c| c == ';')(value)?;
+
+    Ok((value, XmlPEReference(name.0)))
 }
 
 /// Parse xml `NmToken` token.
@@ -203,5 +223,18 @@ mod tests {
                 XmlNmToken(":b")
             ]
         );
+    }
+
+    #[test]
+    fn pe_reference() {
+        let (_, reference) = xml_pe_reference("%hello; ").unwrap();
+
+        assert_eq!(reference, XmlPEReference("hello"));
+
+        let (_, reference) = xml_pe_reference("%hello:a; ").unwrap();
+
+        assert_eq!(reference, XmlPEReference("hello:a"));
+
+        xml_pe_reference("%-hello; ").expect_err("name_start_char");
     }
 }
