@@ -13,6 +13,4 @@ pub use errors::*;
 mod sax;
 pub use sax::*;
 
-pub mod str;
-
-mod character;
+pub mod ebnf;
