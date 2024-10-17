@@ -1,9 +1,10 @@
 //! Xml parsers created by [`nom`] crate.
 
 use nom::{
+    branch::alt,
     bytes::streaming::{tag, take_while, take_while1},
     character::streaming::satisfy,
-    combinator::opt,
+    combinator::{map, opt},
     error::Error,
     IResult,
 };
@@ -49,6 +50,58 @@ pub mod tokens {
     /// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
     #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
     pub struct XmlCharRef(pub char);
+
+    /// A token represents xml/1.1 `Reference`.
+    ///
+    /// See [`XML_EBNF1.1`] for more information.
+    ///
+    /// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+    #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+    pub enum XmlReference<'a> {
+        Entity(&'a str),
+        Char(char),
+    }
+
+    /// A token represents xml/1.1 `EntityValue`.
+    ///
+    /// See [`XML_EBNF1.1`] for more information.
+    ///
+    /// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+    #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+    pub enum XmlEntityValuePart<'a> {
+        PEReference(&'a str),
+        Entity(&'a str),
+        Char(char),
+        Unparsed(&'a str),
+    }
+
+    /// A token represents xml/1.1 `AttValue`.
+    ///
+    /// See [`XML_EBNF1.1`] for more information.
+    ///
+    /// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+    #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+    pub enum XmlAttrValuePart<'a> {
+        Entity(&'a str),
+        Char(char),
+        Unparsed(&'a str),
+    }
+
+    /// A token represents xml/1.1 `SystemLiteral`.
+    ///
+    /// See [`XML_EBNF1.1`] for more information.
+    ///
+    /// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+    #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+    pub struct XmlSystemId<'a>(pub &'a str);
+
+    /// A token represents xml/1.1 `PubidLiteral`.
+    ///
+    /// See [`XML_EBNF1.1`] for more information.
+    ///
+    /// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+    #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+    pub struct XmlPublicId<'a>(pub &'a str);
 }
 
 #[allow(unused)]
@@ -57,6 +110,16 @@ fn is_restricted_char(c: char) -> bool {
         c, '\u{01}'..='\u{08}' | '\u{0b}'..='\u{0c}' | '\u{0e}'..='\u{1f}'
         | '\u{7f}'..='\u{84}' | '\u{86}'..='\u{9f}'
     )
+}
+
+#[allow(unused)]
+fn is_pubid_char(c: char) -> bool {
+    static CHARS: &str = "-'()+,./:=?;!*#@$_%\u{20}'\u{0d}\u{0a}";
+
+    CHARS.contains(c)
+        || matches!(
+            c, '0'..='9' | 'a'..='z' | 'A'..='Z'
+        )
 }
 
 fn is_name_char(c: char) -> bool {
@@ -156,6 +219,115 @@ pub fn xml_char_ref(value: &str) -> IResult<&str, tokens::XmlCharRef> {
     let (value, _) = satisfy(|c| c == ';')(value)?;
 
     Ok((value, tokens::XmlCharRef(digit)))
+}
+
+/// Parse xml `Reference` token.
+pub fn xml_reference(value: &str) -> IResult<&str, tokens::XmlReference<'_>> {
+    alt((
+        map(xml_char_ref, |v| tokens::XmlReference::Char(v.0)),
+        map(xml_entity_ref, |v| tokens::XmlReference::Entity(v.0)),
+    ))(value)
+}
+
+/// Parse xml `EntityValue` token.
+pub fn xml_entity_value(value: &str) -> IResult<&str, Vec<tokens::XmlEntityValuePart<'_>>> {
+    let (mut value, start) = satisfy(|c| c == '"' || c == '\'')(value)?;
+
+    let mut parts = vec![];
+
+    loop {
+        let part;
+        (value, part) = match opt(alt((
+            map(xml_reference, |v| match v {
+                tokens::XmlReference::Entity(v) => tokens::XmlEntityValuePart::Entity(v),
+                tokens::XmlReference::Char(v) => tokens::XmlEntityValuePart::Char(v),
+            }),
+            map(xml_pe_reference, |v| {
+                tokens::XmlEntityValuePart::PEReference(v.0)
+            }),
+            map(take_while1(|c| c != '%' && c != '&' && c != start), |v| {
+                tokens::XmlEntityValuePart::Unparsed(v)
+            }),
+        )))(value)
+        {
+            Ok(r) => r,
+            Err(nom::Err::Incomplete(_)) => {
+                break;
+            }
+            Err(err) => return Err(err),
+        };
+
+        match part {
+            Some(part) => parts.push(part),
+            None => break,
+        }
+    }
+
+    let (value, _) = satisfy(|c| c == start)(value)?;
+
+    Ok((value, parts))
+}
+
+/// Parse xml `AttrValue` token.
+pub fn xml_attr_value(value: &str) -> IResult<&str, Vec<tokens::XmlAttrValuePart<'_>>> {
+    let (mut value, start) = satisfy(|c| c == '"' || c == '\'')(value)?;
+
+    let mut parts = vec![];
+
+    loop {
+        let part;
+        (value, part) = match opt(alt((
+            map(xml_reference, |v| match v {
+                tokens::XmlReference::Entity(v) => tokens::XmlAttrValuePart::Entity(v),
+                tokens::XmlReference::Char(v) => tokens::XmlAttrValuePart::Char(v),
+            }),
+            map(take_while1(|c| c != '%' && c != '&' && c != start), |v| {
+                tokens::XmlAttrValuePart::Unparsed(v)
+            }),
+        )))(value)
+        {
+            Ok(r) => r,
+            Err(nom::Err::Incomplete(_)) => {
+                break;
+            }
+            Err(err) => return Err(err),
+        };
+
+        match part {
+            Some(part) => parts.push(part),
+            None => break,
+        }
+    }
+
+    let (value, _) = satisfy(|c| c == start)(value)?;
+
+    Ok((value, parts))
+}
+
+/// Parse xml `SystemLiteral` token.
+pub fn xml_system_id(value: &str) -> IResult<&str, tokens::XmlSystemId<'_>> {
+    let (value, start) = satisfy(|c| c == '"' || c == '\'')(value)?;
+
+    let (value, token) = map(take_while(|c| c != '%' && c != '&' && c != start), |v| {
+        tokens::XmlSystemId(v)
+    })(value)?;
+
+    let (value, _) = satisfy(|c| c == start)(value)?;
+
+    Ok((value, token))
+}
+
+/// Parse xml `PubidLiteral` token.
+pub fn xml_public_id(value: &str) -> IResult<&str, tokens::XmlPublicId<'_>> {
+    let (value, start) = satisfy(|c| c == '"' || c == '\'')(value)?;
+
+    let (value, token) = map(take_while(|c| is_pubid_char(c) && c != start), |v| {
+        tokens::XmlPublicId(v)
+    })(value)?;
+
+    let (value, _) = satisfy(|c| c == start)(value)?;
+
+    Ok((value, token))
 }
 
 /// Parse xml `NmToken` token.
@@ -267,6 +439,14 @@ mod tests {
         xml_name(".hello ").expect_err("name_start_char");
         xml_name("-hello ").expect_err("name_start_char");
         xml_name("0hello ").expect_err("name_start_char");
+
+        assert_eq!(
+            xml_name("#hello "),
+            Err(nom::Err::Error(Error::new(
+                "#hello ",
+                nom::error::ErrorKind::Satisfy
+            )))
+        );
     }
 
     #[test]
@@ -350,6 +530,89 @@ mod tests {
             Err(nom::Err::Failure(Error::new(
                 "d800",
                 nom::error::ErrorKind::Digit
+            )))
+        );
+    }
+
+    #[test]
+    fn reference() {
+        let (_, reference) = xml_reference("&#x2122; ").unwrap();
+
+        assert_eq!(reference, XmlReference::Char('\u{2122}'));
+
+        let (_, reference) = xml_reference("&hello; ").unwrap();
+
+        assert_eq!(reference, XmlReference::Entity("hello"));
+    }
+
+    #[test]
+    fn entity_value() {
+        let (_, value) = xml_entity_value(r#"'%hello:a; hello &#x2122; world &hello;' "#).unwrap();
+
+        assert_eq!(
+            value,
+            vec![
+                XmlEntityValuePart::PEReference("hello:a"),
+                XmlEntityValuePart::Unparsed(" hello "),
+                XmlEntityValuePart::Char('™'),
+                XmlEntityValuePart::Unparsed(" world "),
+                XmlEntityValuePart::Entity("hello")
+            ]
+        );
+    }
+
+    #[test]
+    fn attr_value() {
+        let (_, value) = xml_attr_value(r#"' hello &#x2122; world &hello;' "#).unwrap();
+
+        assert_eq!(
+            value,
+            vec![
+                XmlAttrValuePart::Unparsed(" hello "),
+                XmlAttrValuePart::Char('™'),
+                XmlAttrValuePart::Unparsed(" world "),
+                XmlAttrValuePart::Entity("hello")
+            ]
+        );
+
+        xml_attr_value(r#"'%hello:a; hello &#x2122; world &hello;' "#)
+            .expect_err("AttValue: unspport PEReference");
+    }
+
+    #[test]
+    fn system_id() {
+        let (_, value) = xml_system_id("'\u{2122}' ").unwrap();
+
+        assert_eq!(value, XmlSystemId("\u{2122}"));
+
+        let (_, value) = xml_system_id(r#"'"hello' "#).unwrap();
+
+        assert_eq!(value, XmlSystemId("\"hello"));
+
+        let (_, value) = xml_system_id(r#""" "#).unwrap();
+
+        assert_eq!(value, XmlSystemId(""));
+
+        let (_, value) = xml_system_id(r#""'hello" "#).unwrap();
+
+        assert_eq!(value, XmlSystemId("'hello"));
+    }
+
+    #[test]
+    fn public_id() {
+        let (_, value) = xml_public_id("'' ").unwrap();
+
+        assert_eq!(value, XmlPublicId(""));
+
+        let (_, value) = xml_public_id(r#""'hello" "#).unwrap();
+
+        assert_eq!(value, XmlPublicId("'hello"));
+
+        assert_eq!(
+            xml_public_id("'\u{2122}' "),
+            Err(nom::Err::Error(Error::new(
+                "\u{2122}' ",
+                nom::error::ErrorKind::Satisfy
             )))
         );
     }
