@@ -1,12 +1,12 @@
 //! Xml parsers created by [`nom`] crate.
 
 use nom::{
-    bytes::streaming::{take_while, take_while1},
+    bytes::streaming::{tag, take_while, take_while1},
     character::streaming::satisfy,
     combinator::opt,
+    error::Error,
     IResult,
 };
-use tokens::XmlPEReference;
 
 /// Parsed xml tokens.
 pub mod tokens {
@@ -33,6 +33,22 @@ pub mod tokens {
     /// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
     #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
     pub struct XmlPEReference<'a>(pub &'a str);
+
+    /// A token represents xml/1.1 `EntityRef`.
+    ///
+    /// See [`XML_EBNF1.1`] for more information.
+    ///
+    /// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+    #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+    pub struct XmlEntityRef<'a>(pub &'a str);
+
+    /// A token represents xml/1.1 `CharRef`.
+    ///
+    /// See [`XML_EBNF1.1`] for more information.
+    ///
+    /// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+    #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+    pub struct XmlCharRef(pub char);
 }
 
 #[allow(unused)]
@@ -81,7 +97,65 @@ pub fn xml_pe_reference(value: &str) -> IResult<&str, tokens::XmlPEReference<'_>
 
     let (value, _) = satisfy(|c| c == ';')(value)?;
 
-    Ok((value, XmlPEReference(name.0)))
+    Ok((value, tokens::XmlPEReference(name.0)))
+}
+
+/// Parse xml `EntityRef` token.
+pub fn xml_entity_ref(value: &str) -> IResult<&str, tokens::XmlEntityRef<'_>> {
+    let (value, _) = satisfy(|c| c == '&')(value)?;
+
+    let (value, name) = xml_name(value)?;
+
+    let (value, _) = satisfy(|c| c == ';')(value)?;
+
+    Ok((value, tokens::XmlEntityRef(name.0)))
+}
+
+/// Parse xml `CharRef` token.
+pub fn xml_char_ref(value: &str) -> IResult<&str, tokens::XmlCharRef> {
+    let (value, _) = tag("&#")(value)?;
+
+    let (value, is_hex) = opt(satisfy(|c| c == 'x'))(value)?;
+
+    let (value, digit) = if is_hex.is_some() {
+        let (value, digit) = take_while1(|c: char| c.is_ascii_hexdigit())(value)?;
+
+        let digit = match u32::from_str_radix(digit, 16) {
+            Ok(v) => char::from_u32(v).ok_or(nom::Err::Failure(Error::new(
+                digit,
+                nom::error::ErrorKind::Digit,
+            )))?,
+            Err(_) => {
+                return Err(nom::Err::Failure(Error::new(
+                    digit,
+                    nom::error::ErrorKind::Digit,
+                )))
+            }
+        };
+
+        (value, digit)
+    } else {
+        let (value, digit) = take_while1(|c: char| c.is_ascii_digit())(value)?;
+
+        let digit = match u32::from_str_radix(digit, 10) {
+            Ok(v) => char::from_u32(v).ok_or(nom::Err::Failure(Error::new(
+                digit,
+                nom::error::ErrorKind::Digit,
+            )))?,
+            Err(_) => {
+                return Err(nom::Err::Failure(Error::new(
+                    digit,
+                    nom::error::ErrorKind::Digit,
+                )))
+            }
+        };
+
+        (value, digit)
+    };
+
+    let (value, _) = satisfy(|c| c == ';')(value)?;
+
+    Ok((value, tokens::XmlCharRef(digit)))
 }
 
 /// Parse xml `NmToken` token.
@@ -236,5 +310,47 @@ mod tests {
         assert_eq!(reference, XmlPEReference("hello:a"));
 
         xml_pe_reference("%-hello; ").expect_err("name_start_char");
+    }
+
+    #[test]
+    fn entity_ref() {
+        let (_, reference) = xml_entity_ref("&hello; ").unwrap();
+
+        assert_eq!(reference, XmlEntityRef("hello"));
+
+        let (_, reference) = xml_entity_ref("&hello:a; ").unwrap();
+
+        assert_eq!(reference, XmlEntityRef("hello:a"));
+
+        xml_entity_ref("&-hello; ").expect_err("name_start_char");
+
+        xml_entity_ref("& hello; ").expect_err("name_start_char");
+    }
+
+    #[test]
+    fn char_ref() {
+        let (_, reference) = xml_char_ref("&#x2122; ").unwrap();
+
+        assert_eq!(reference, XmlCharRef('\u{2122}'));
+
+        let (_, reference) = xml_char_ref("&#169; ").unwrap();
+
+        assert_eq!(reference, XmlCharRef('\u{a9}'));
+
+        assert_eq!(
+            xml_char_ref("&#x21222122; "),
+            Err(nom::Err::Failure(Error::new(
+                "21222122",
+                nom::error::ErrorKind::Digit
+            )))
+        );
+
+        assert_eq!(
+            xml_char_ref("&#xd800; "),
+            Err(nom::Err::Failure(Error::new(
+                "d800",
+                nom::error::ErrorKind::Digit
+            )))
+        );
     }
 }
