@@ -2,12 +2,16 @@
 
 use nom::{
     branch::alt,
-    bytes::streaming::{tag, take_while, take_while1},
+    bytes::{
+        complete::take_until,
+        streaming::{tag, take_till, take_while, take_while1},
+    },
     character::streaming::satisfy,
-    combinator::{map, opt},
+    combinator::{cond, map, opt, peek},
     error::Error,
     IResult,
 };
+use tokens::{XmlPI, XmlVersion};
 
 /// Parsed xml tokens.
 pub mod tokens {
@@ -102,6 +106,95 @@ pub mod tokens {
     /// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
     #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
     pub struct XmlPublicId<'a>(pub &'a str);
+
+    /// A token represents xml/1.1 `CharData`.
+    ///
+    /// See [`XML_EBNF1.1`] for more information.
+    ///
+    /// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+    #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+    pub struct XmlCharData<'a>(pub &'a str);
+
+    /// A token represents xml/1.1 `Comment`.
+    ///
+    /// See [`XML_EBNF1.1`] for more information.
+    ///
+    /// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+    #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+    pub struct XmlComment<'a>(pub &'a str);
+
+    /// A token represents xml/1.1 `PI`.
+    ///
+    /// See [`XML_EBNF1.1`] for more information.
+    ///
+    /// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+    #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+    pub struct XmlPI<'a> {
+        pub target: &'a str,
+        pub data: Option<&'a str>,
+    }
+
+    /// A token represents xml/1.1 `PI`.
+    ///
+    /// See [`XML_EBNF1.1`] for more information.
+    ///
+    /// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+    #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+    pub enum XmlMisc<'a> {
+        PI {
+            target: &'a str,
+            data: Option<&'a str>,
+        },
+        Comment(&'a str),
+        Space,
+    }
+
+    /// A token represents xml/1.1 `CData`.
+    ///
+    /// See [`XML_EBNF1.1`] for more information.
+    ///
+    /// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+    #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+    pub struct XmlCData<'a>(pub &'a str);
+
+    /// A token represents xml/1.1 `XmlDecl`.
+    ///
+    /// See [`XML_EBNF1.1`] for more information.
+    ///
+    /// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+    #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+    pub struct XmlDecl<'a> {
+        pub version: XmlVersion,
+        pub encoding: Option<&'a str>,
+        pub standalone: Option<bool>,
+    }
+
+    /// A token represents xml/1.1 `XmlEncoding`.
+    ///
+    /// See [`XML_EBNF1.1`] for more information.
+    ///
+    /// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+    #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+    pub struct XmlEncoding<'a>(pub &'a str);
+
+    /// A token represents xml/1.1 `SDDecl`.
+    ///
+    /// See [`XML_EBNF1.1`] for more information.
+    ///
+    /// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+    #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+    pub struct XmlSDDecl(pub bool);
+
+    /// A token represents xml/1.1 `XmlVersion`.
+    ///
+    /// See [`XML_EBNF1.1`] for more information.
+    ///
+    /// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+    #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+    pub enum XmlVersion {
+        Version1_0,
+        Version1_1,
+    }
 }
 
 #[allow(unused)]
@@ -109,6 +202,13 @@ fn is_restricted_char(c: char) -> bool {
     matches!(
         c, '\u{01}'..='\u{08}' | '\u{0b}'..='\u{0c}' | '\u{0e}'..='\u{1f}'
         | '\u{7f}'..='\u{84}' | '\u{86}'..='\u{9f}'
+    )
+}
+
+#[allow(unused)]
+fn is_char(c: char) -> bool {
+    matches!(
+        c, '\u{01}'..='\u{D7FF}' | '\u{E000}'..='\u{FFFD}' | '\u{10000}'..='\u{10FFFF}'
     )
 }
 
@@ -330,6 +430,60 @@ pub fn xml_public_id(value: &str) -> IResult<&str, tokens::XmlPublicId<'_>> {
     Ok((value, token))
 }
 
+/// Parse xml `CharData` token.
+pub fn xml_char_data(value: &str) -> IResult<&str, tokens::XmlCharData<'_>> {
+    let mut input = value;
+
+    loop {
+        (input, _) = take_till(|c| c == '<' || c == '&' || c == ']')(input)?;
+
+        if input.chars().next().unwrap() == ']' {
+            let cdata_end;
+            (input, cdata_end) = peek(opt(tag("]]>")))(input)?;
+
+            if cdata_end.is_none() {
+                (_, input) = input.split_at(1);
+                continue;
+            }
+        }
+
+        break;
+    }
+
+    let (char_data, value) = value.split_at(value.len() - input.len());
+
+    Ok((value, tokens::XmlCharData(char_data)))
+}
+
+/// Parse xml `XmlComment` token.
+pub fn xml_comment(value: &str) -> IResult<&str, tokens::XmlComment<'_>> {
+    let (value, _) = tag("<!--")(value)?;
+
+    let mut input = value;
+
+    loop {
+        (input, _) = take_while(|c| c != '-' && is_char(c))(input)?;
+
+        if input.chars().next().unwrap() == '-' {
+            let comment_end;
+            (input, comment_end) = peek(opt(tag("--")))(input)?;
+
+            if comment_end.is_none() {
+                (_, input) = input.split_at(1);
+                continue;
+            }
+        }
+
+        break;
+    }
+
+    let (comment, value) = value.split_at(value.len() - input.len());
+
+    let (value, _) = tag("-->")(value)?;
+
+    Ok((value, tokens::XmlComment(comment)))
+}
+
 /// Parse xml `NmToken` token.
 pub fn xml_nm_token(value: &str) -> IResult<&str, tokens::XmlNmToken<'_>> {
     let (value, body) = take_while(is_name_char)(value)?;
@@ -414,6 +568,152 @@ pub fn xml_names(value: &str) -> IResult<&str, Vec<tokens::XmlName<'_>>> {
     }
 
     Ok((value, names))
+}
+
+/// Parse xml `PI` token.
+///
+/// This function doesn't check the reserved target names 'XML','xml' and so on.
+pub fn xml_pi(value: &str) -> IResult<&str, tokens::XmlPI<'_>> {
+    let (value, _) = tag("<?")(value)?;
+
+    let (value, target) = xml_name(value)?;
+
+    let (value, space) = opt(xml_space)(value)?;
+
+    let (value, data) = cond(space.is_some(), take_until("?>"))(value)?;
+
+    let (value, _) = tag("?>")(value)?;
+
+    Ok((
+        value,
+        XmlPI {
+            target: target.0,
+            data,
+        },
+    ))
+}
+
+/// Parse xml `CData` token.
+pub fn xml_cdata(value: &str) -> IResult<&str, tokens::XmlCData<'_>> {
+    let (value, _) = tag("<![CDATA[")(value)?;
+
+    let mut input = value;
+
+    loop {
+        (input, _) = take_while(|c| c != ']' && is_char(c))(input)?;
+
+        if input.chars().next().unwrap() == ']' {
+            let comment_end;
+            (input, comment_end) = peek(opt(tag("]]>")))(input)?;
+
+            if comment_end.is_none() {
+                (_, input) = input.split_at(1);
+                continue;
+            }
+        }
+
+        break;
+    }
+
+    let (cdata, value) = value.split_at(value.len() - input.len());
+
+    let (value, _) = tag("]]>")(value)?;
+
+    Ok((value, tokens::XmlCData(cdata)))
+}
+
+/// Parse xml `XmlDecl` token.
+pub fn xml_decl(value: &str) -> IResult<&str, tokens::XmlDecl<'_>> {
+    let (value, _) = tag("<?xml")(value)?;
+    let (value, version) = xml_version_info(value)?;
+    let (value, encoding) = opt(xml_encoding_decl)(value)?;
+    let (value, standalone) = opt(xml_standalone_decl)(value)?;
+    let (value, _) = opt(xml_space)(value)?;
+    let (value, _) = tag("?>")(value)?;
+
+    Ok((
+        value,
+        tokens::XmlDecl {
+            version,
+            encoding: encoding.map(|v| v.0),
+            standalone: standalone.map(|v| v.0),
+        },
+    ))
+}
+
+/// Parse xml `VersionInfo` token.
+pub fn xml_version_info(value: &str) -> IResult<&str, tokens::XmlVersion> {
+    let (value, _) = xml_space(value)?;
+    let (value, _) = tag("version")(value)?;
+    let (value, _) = xml_eq(value)?;
+    let (value, start) = satisfy(|c| c == '"' || c == '\'')(value)?;
+    let (value, version_info) = alt((
+        map(tag("1.1"), |_| XmlVersion::Version1_1),
+        map(tag("1.0"), |_| XmlVersion::Version1_0),
+    ))(value)?;
+    let (value, _) = satisfy(|c| c == start)(value)?;
+
+    Ok((value, version_info))
+}
+
+/// Parse xml `Eq` token.
+pub fn xml_eq(value: &str) -> IResult<&str, ()> {
+    let (value, _) = opt(xml_space)(value)?;
+
+    let (value, _) = satisfy(|c| c == '=')(value)?;
+
+    let (value, _) = opt(xml_space)(value)?;
+
+    Ok((value, ()))
+}
+
+/// Parse xml `EncName` token.
+pub fn xml_encoding_decl(value: &str) -> IResult<&str, tokens::XmlEncoding<'_>> {
+    let (value, _) = xml_space(value)?;
+    let (value, _) = tag("encoding")(value)?;
+    let (value, _) = xml_eq(value)?;
+    let (value, start) = satisfy(|c| c == '"' || c == '\'')(value)?;
+    let (input, _) = satisfy(|c| c.is_ascii_alphabetic())(value)?;
+    let (input, _) =
+        take_while(|c: char| c == '-' || c == '.' || c == '_' || c.is_alphanumeric())(input)?;
+
+    let (enc_name, value) = value.split_at(value.len() - input.len());
+
+    let (value, _) = satisfy(|c| c == start)(value)?;
+
+    Ok((value, tokens::XmlEncoding(enc_name)))
+}
+
+/// Parse xml `SDDecl` token.
+pub fn xml_standalone_decl(value: &str) -> IResult<&str, tokens::XmlSDDecl> {
+    let (value, _) = xml_space(value)?;
+    let (value, _) = tag("standalone")(value)?;
+    let (value, _) = xml_eq(value)?;
+    let (value, start) = satisfy(|c| c == '"' || c == '\'')(value)?;
+
+    let (value, sd_decl) = map(alt((tag("yes"), tag("no"))), |v| {
+        if v == "yes" {
+            tokens::XmlSDDecl(true)
+        } else {
+            tokens::XmlSDDecl(false)
+        }
+    })(value)?;
+
+    let (value, _) = satisfy(|c| c == start)(value)?;
+
+    Ok((value, sd_decl))
+}
+
+/// Parse xml `Misc` token.
+pub fn xml_misc(value: &str) -> IResult<&str, tokens::XmlMisc<'_>> {
+    alt((
+        map(xml_pi, |v| tokens::XmlMisc::PI {
+            target: v.target,
+            data: v.data,
+        }),
+        map(xml_comment, |v| tokens::XmlMisc::Comment(v.0)),
+        map(xml_space, |_| tokens::XmlMisc::Space),
+    ))(value)
 }
 
 #[cfg(test)]
@@ -614,6 +914,110 @@ mod tests {
                 "\u{2122}' ",
                 nom::error::ErrorKind::Satisfy
             )))
+        );
+    }
+
+    #[test]
+    fn chardata() {
+        let (_, value) = xml_char_data("hello world&").unwrap();
+
+        assert_eq!(value, XmlCharData("hello world"));
+
+        let (_, value) = xml_char_data("hello world<").unwrap();
+
+        assert_eq!(value, XmlCharData("hello world"));
+
+        let (_, value) = xml_char_data("hello ]> world]]>").unwrap();
+
+        assert_eq!(value, XmlCharData("hello ]> world"));
+    }
+
+    #[test]
+    fn comment() {
+        let (_, value) = xml_comment("<!-- hello - world& --> ").unwrap();
+
+        assert_eq!(value, XmlComment(" hello - world& "));
+
+        let (_, value) = xml_comment("<!--hello - <<<!>> world&--> ").unwrap();
+
+        assert_eq!(value, XmlComment("hello - <<<!>> world&"));
+
+        assert_eq!(
+            xml_comment("<!-- hello -- world& --> "),
+            Err(nom::Err::Error(Error::new(
+                "-- world& --> ",
+                nom::error::ErrorKind::Tag
+            )))
+        );
+    }
+
+    #[test]
+    fn pi() {
+        let (_, value) = xml_pi("<?xml-stylesheet?> ").unwrap();
+
+        assert_eq!(
+            value,
+            XmlPI {
+                target: "xml-stylesheet",
+                data: None
+            }
+        );
+
+        let (_, value) = xml_pi("<?xml-stylesheet ?> ").unwrap();
+
+        assert_eq!(
+            value,
+            XmlPI {
+                target: "xml-stylesheet",
+                data: Some("")
+            }
+        );
+
+        let (_, value) = xml_pi("<?xml-stylesheet   hello<>world   ?> ").unwrap();
+
+        assert_eq!(
+            value,
+            XmlPI {
+                target: "xml-stylesheet",
+                data: Some("hello<>world   ")
+            }
+        );
+    }
+
+    #[test]
+    fn cdata() {
+        let (_, value) = xml_cdata("<![CDATA[]]> ").unwrap();
+
+        assert_eq!(value, XmlCData(""));
+
+        let (_, value) = xml_cdata("<![CDATA[ he<![CDATA[]]llo]]> ").unwrap();
+
+        assert_eq!(value, XmlCData(" he<![CDATA[]]llo"));
+    }
+
+    #[test]
+    fn xmldecl() {
+        let (_, value) = xml_decl(r#"<?xml version="1.0" encoding="utf-8"?> "#).unwrap();
+
+        assert_eq!(
+            value,
+            XmlDecl {
+                version: XmlVersion::Version1_0,
+                encoding: Some("utf-8"),
+                standalone: None
+            }
+        );
+
+        let (_, value) =
+            xml_decl(r#"<?xml version="1.1" encoding="utf-8" standalone="yes"       ?> "#).unwrap();
+
+        assert_eq!(
+            value,
+            XmlDecl {
+                version: XmlVersion::Version1_1,
+                encoding: Some("utf-8"),
+                standalone: Some(true)
+            }
         );
     }
 }
