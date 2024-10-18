@@ -107,6 +107,20 @@ pub mod tokens {
     #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
     pub struct XmlPublicId<'a>(pub &'a str);
 
+    /// A token represents xml/1.1 `ExternalID`.
+    ///
+    /// See [`XML_EBNF1.1`] for more information.
+    ///
+    /// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+    #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+    pub enum XmlExternalId<'a> {
+        System(&'a str),
+        Public {
+            public_id: &'a str,
+            system_id: &'a str,
+        },
+    }
+
     /// A token represents xml/1.1 `CharData`.
     ///
     /// See [`XML_EBNF1.1`] for more information.
@@ -716,6 +730,33 @@ pub fn xml_misc(value: &str) -> IResult<&str, tokens::XmlMisc<'_>> {
     ))(value)
 }
 
+/// Parse xml `ExternalID` token.
+pub fn xml_external_id(value: &str) -> IResult<&str, tokens::XmlExternalId<'_>> {
+    let (value, start) = alt((tag("SYSTEM"), tag("PUBLIC")))(value)?;
+
+    let (value, _) = xml_space(value)?;
+
+    let (value, external_id) = if start == "SYSTEM" {
+        let (value, system_id) = xml_system_id(value)?;
+
+        (value, tokens::XmlExternalId::System(system_id.0))
+    } else {
+        let (value, public_id) = xml_public_id(value)?;
+        let (value, _) = xml_space(value)?;
+        let (value, system_id) = xml_system_id(value)?;
+
+        (
+            value,
+            tokens::XmlExternalId::Public {
+                public_id: public_id.0,
+                system_id: system_id.0,
+            },
+        )
+    };
+
+    Ok((value, external_id))
+}
+
 #[cfg(test)]
 mod tests {
     use tokens::*;
@@ -1017,6 +1058,32 @@ mod tests {
                 version: XmlVersion::Version1_1,
                 encoding: Some("utf-8"),
                 standalone: Some(true)
+            }
+        );
+    }
+
+    #[test]
+    fn external_id() {
+        let (_, id) =
+            xml_external_id(r#"SYSTEM "http://www.textuality.com/boilerplate/OpenHatch.xml" "#)
+                .unwrap();
+
+        assert_eq!(
+            id,
+            XmlExternalId::System("http://www.textuality.com/boilerplate/OpenHatch.xml")
+        );
+
+        let (_, id) = xml_external_id(
+            r#"PUBLIC "-//Textuality//TEXT Standard open-hatch boilerplate//EN" 
+                "http://www.textuality.com/boilerplate/OpenHatch.xml" "#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            id,
+            XmlExternalId::Public {
+                public_id: "-//Textuality//TEXT Standard open-hatch boilerplate//EN",
+                system_id: "http://www.textuality.com/boilerplate/OpenHatch.xml"
             }
         );
     }
