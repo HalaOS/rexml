@@ -625,7 +625,7 @@ pub fn xml_cdata(value: &str) -> IResult<&str, tokens::XmlCData<'_>> {
 /// Parse xml `XmlDecl` token.
 pub fn xml_decl(value: &str) -> IResult<&str, tokens::XmlDecl<'_>> {
     let (value, _) = tag("<?xml")(value)?;
-    let (value, version) = xml_version_info(value)?;
+    let (value, version) = xml_version(value)?;
     let (value, encoding) = opt(xml_encoding_decl)(value)?;
     let (value, standalone) = opt(xml_standalone_decl)(value)?;
     let (value, _) = opt(xml_space)(value)?;
@@ -641,8 +641,8 @@ pub fn xml_decl(value: &str) -> IResult<&str, tokens::XmlDecl<'_>> {
     ))
 }
 
-/// Parse xml `VersionInfo` token.
-pub fn xml_version_info(value: &str) -> IResult<&str, tokens::XmlVersion> {
+/// Parse xml `Version` token.
+pub fn xml_version(value: &str) -> IResult<&str, tokens::XmlVersion> {
     let (value, _) = xml_space(value)?;
     let (value, _) = tag("version")(value)?;
     let (value, _) = xml_eq(value)?;
