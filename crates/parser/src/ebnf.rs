@@ -9,6 +9,8 @@ use nom::{
     character::streaming::satisfy,
     combinator::{cond, map, opt, peek},
     error::Error,
+    multi::separated_list0,
+    sequence::tuple,
     IResult,
 };
 use tokens::{XmlPI, XmlVersion};
@@ -209,6 +211,48 @@ pub mod tokens {
         Version1_0,
         Version1_1,
     }
+
+    /// A token represents xml/1.1 `initSubSet`.
+    ///
+    /// See [`XML_EBNF1.1`] for more information.
+    ///
+    /// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+    #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+    pub enum XmlInitSubset<'a> {
+        PEReference(&'a str),
+
+        Space,
+    }
+
+    /// A token represents xml/1.1 `ElementDecl`.
+    ///
+    /// See [`XML_EBNF1.1`] for more information.
+    ///
+    /// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+    #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+    pub struct XmlNotationDecl<'a> {
+        pub name: XmlName<'a>,
+        pub id: XmlNotationId<'a>,
+    }
+
+    /// A token represents xml/1.1 `NotationId`.
+    ///
+    /// See [`XML_EBNF1.1`] for more information.
+    ///
+    /// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+    #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+    pub enum XmlNotationId<'a> {
+        ExternalId(XmlExternalId<'a>),
+        PublicId(XmlPublicId<'a>),
+    }
+
+    /// A token represents xml/1.1 `NotationId`.
+    ///
+    /// See [`XML_EBNF1.1`] for more information.
+    ///
+    /// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+    #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+    pub struct XmlMixed<'a>(pub Option<Vec<&'a str>>);
 }
 
 #[allow(unused)]
@@ -419,7 +463,7 @@ pub fn xml_attr_value(value: &str) -> IResult<&str, Vec<tokens::XmlAttrValuePart
 }
 
 /// Parse xml `SystemLiteral` token.
-pub fn xml_system_id(value: &str) -> IResult<&str, tokens::XmlSystemId<'_>> {
+pub fn xml_system_id_literal(value: &str) -> IResult<&str, tokens::XmlSystemId<'_>> {
     let (value, start) = satisfy(|c| c == '"' || c == '\'')(value)?;
 
     let (value, token) = map(take_while(|c| c != '%' && c != '&' && c != start), |v| {
@@ -432,7 +476,7 @@ pub fn xml_system_id(value: &str) -> IResult<&str, tokens::XmlSystemId<'_>> {
 }
 
 /// Parse xml `PubidLiteral` token.
-pub fn xml_public_id(value: &str) -> IResult<&str, tokens::XmlPublicId<'_>> {
+pub fn xml_public_id_literal(value: &str) -> IResult<&str, tokens::XmlPublicId<'_>> {
     let (value, start) = satisfy(|c| c == '"' || c == '\'')(value)?;
 
     let (value, token) = map(take_while(|c| is_pubid_char(c) && c != start), |v| {
@@ -737,13 +781,13 @@ pub fn xml_external_id(value: &str) -> IResult<&str, tokens::XmlExternalId<'_>> 
     let (value, _) = xml_space(value)?;
 
     let (value, external_id) = if start == "SYSTEM" {
-        let (value, system_id) = xml_system_id(value)?;
+        let (value, system_id) = xml_system_id_literal(value)?;
 
         (value, tokens::XmlExternalId::System(system_id.0))
     } else {
-        let (value, public_id) = xml_public_id(value)?;
+        let (value, public_id) = xml_public_id_literal(value)?;
         let (value, _) = xml_space(value)?;
-        let (value, system_id) = xml_system_id(value)?;
+        let (value, system_id) = xml_system_id_literal(value)?;
 
         (
             value,
@@ -755,6 +799,73 @@ pub fn xml_external_id(value: &str) -> IResult<&str, tokens::XmlExternalId<'_>> 
     };
 
     Ok((value, external_id))
+}
+
+/// Parse xml `intSubset` token.
+pub fn xml_init_subset(_value: &str) -> IResult<&str, tokens::XmlExternalId<'_>> {
+    todo!()
+}
+
+/// Parse xml `PublicID` token.
+pub fn xml_public_id(value: &str) -> IResult<&str, tokens::XmlPublicId<'_>> {
+    let (value, _) = tag("PUBLIC")(value)?;
+    let (value, _) = xml_space(value)?;
+    xml_public_id_literal(value)
+}
+
+/// Parse xml `NotationDecl` token.
+pub fn xml_notation_decl(value: &str) -> IResult<&str, tokens::XmlNotationDecl<'_>> {
+    let (value, _) = tag("<!NOTATION")(value)?;
+    let (value, _) = xml_space(value)?;
+    let (value, name) = xml_name(value)?;
+    let (value, _) = xml_space(value)?;
+
+    let (value, id) = alt((
+        map(xml_external_id, |v| tokens::XmlNotationId::ExternalId(v)),
+        map(xml_public_id, |v| tokens::XmlNotationId::PublicId(v)),
+    ))(value)?;
+
+    let (value, _) = opt(xml_space)(value)?;
+
+    let (value, _) = satisfy(|c| c == '>')(value)?;
+
+    Ok((value, tokens::XmlNotationDecl { name, id }))
+}
+
+/// Parse xml `Mixed` token.
+pub fn xml_mixed(value: &str) -> IResult<&str, tokens::XmlMixed<'_>> {
+    let (value, _) = satisfy(|c| c == '(')(value)?;
+
+    let (value, _) = opt(xml_space)(value)?;
+
+    let (value, _) = tag("#PCDATA")(value)?;
+
+    let (value, _) = opt(xml_space)(value)?;
+
+    let (value, list) = opt(satisfy(|c| c == '|'))(value)?;
+
+    let (value, types) = if list.is_some() {
+        let (value, types) = separated_list0(
+            tuple((opt(xml_space), satisfy(|c| c == '|'), opt(xml_space))),
+            map(xml_name, |v| v.0),
+        )(value)?;
+
+        (value, Some(types))
+    } else {
+        (value, None)
+    };
+
+    let (value, _) = opt(xml_space)(value)?;
+
+    let value = if types.is_none() {
+        let (value, _) = satisfy(|c| c == ')')(value)?;
+        value
+    } else {
+        let (value, _) = tag(")*")(value)?;
+        value
+    };
+
+    Ok((value, tokens::XmlMixed(types)))
 }
 
 #[cfg(test)]
@@ -922,35 +1033,35 @@ mod tests {
 
     #[test]
     fn system_id() {
-        let (_, value) = xml_system_id("'\u{2122}' ").unwrap();
+        let (_, value) = xml_system_id_literal("'\u{2122}' ").unwrap();
 
         assert_eq!(value, XmlSystemId("\u{2122}"));
 
-        let (_, value) = xml_system_id(r#"'"hello' "#).unwrap();
+        let (_, value) = xml_system_id_literal(r#"'"hello' "#).unwrap();
 
         assert_eq!(value, XmlSystemId("\"hello"));
 
-        let (_, value) = xml_system_id(r#""" "#).unwrap();
+        let (_, value) = xml_system_id_literal(r#""" "#).unwrap();
 
         assert_eq!(value, XmlSystemId(""));
 
-        let (_, value) = xml_system_id(r#""'hello" "#).unwrap();
+        let (_, value) = xml_system_id_literal(r#""'hello" "#).unwrap();
 
         assert_eq!(value, XmlSystemId("'hello"));
     }
 
     #[test]
     fn public_id() {
-        let (_, value) = xml_public_id("'' ").unwrap();
+        let (_, value) = xml_public_id_literal("'' ").unwrap();
 
         assert_eq!(value, XmlPublicId(""));
 
-        let (_, value) = xml_public_id(r#""'hello" "#).unwrap();
+        let (_, value) = xml_public_id_literal(r#""'hello" "#).unwrap();
 
         assert_eq!(value, XmlPublicId("'hello"));
 
         assert_eq!(
-            xml_public_id("'\u{2122}' "),
+            xml_public_id_literal("'\u{2122}' "),
             Err(nom::Err::Error(Error::new(
                 "\u{2122}' ",
                 nom::error::ErrorKind::Satisfy
@@ -1086,5 +1197,26 @@ mod tests {
                 system_id: "http://www.textuality.com/boilerplate/OpenHatch.xml"
             }
         );
+    }
+
+    #[test]
+    fn mixed() {
+        let (_, mixed) = xml_mixed(r#"(#PCDATA) "#).unwrap();
+
+        assert_eq!(mixed, XmlMixed(None));
+
+        assert_eq!(xml_mixed(r#"(#PCDATA)* "#), Ok(("* ", XmlMixed(None))));
+
+        let (_, mixed) = xml_mixed(r#"(#PCDATA|a|ul|b|i|em)* "#).unwrap();
+
+        assert_eq!(mixed, XmlMixed(Some(vec!["a", "ul", "b", "i", "em"])));
+
+        // let (_, mixed) =
+        //     xml_mixed(r#"(#PCDATA | %font; | %phrase; | %special; | %form;)* "#).unwrap();
+
+        // assert_eq!(
+        //     mixed,
+        //     XmlMixed(Some(vec!["%font;", "%phrase;", "%special;", "%form;",]))
+        // );
     }
 }
