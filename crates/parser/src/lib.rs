@@ -14,3 +14,4 @@ mod sax;
 pub use sax::*;
 
 pub mod ebnf;
+pub mod symbols;
