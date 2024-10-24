@@ -2,9 +2,9 @@
 
 use nom::{
     branch::alt,
-    bytes::streaming::{tag, take_till1, take_while, take_while1},
+    bytes::streaming::{tag, take_till1, take_until, take_while, take_while1},
     character::streaming::satisfy,
-    combinator::map,
+    combinator::{cond, map, opt, peek},
     error::Error,
     multi::{many0, separated_list1},
     sequence::{delimited, pair, tuple},
@@ -12,8 +12,9 @@ use nom::{
 };
 
 use crate::symbols::{
-    XmlEntityValuePart, XmlName, XmlNmToken, XmlPEReference, XmlPubidLiteral, XmlReference,
-    XmlWhiteSpace,
+    XmlAttrValuePart, XmlCData, XmlComment, XmlDecl, XmlEncoding, XmlEntityValuePart, XmlMisc,
+    XmlName, XmlNmToken, XmlPEReference, XmlPI, XmlPubidLiteral, XmlReference, XmlSDDecl,
+    XmlSystemLiteral, XmlVersion, XmlWhiteSpace,
 };
 
 /// [#x1-#xD7FF] | [#xE000-#xFFFD] | [#x10000-#x10FFFF],
@@ -68,7 +69,7 @@ pub fn is_pubid_char(c: char) -> bool {
 
 /// Parse `White space` symbol.
 pub fn xml_ws(value: &str) -> IResult<&str, XmlWhiteSpace<'_>> {
-    map(take_while(is_whitespace), |v| XmlWhiteSpace(v))(value)
+    map(take_while1(is_whitespace), |v| XmlWhiteSpace(v))(value)
 }
 
 /// Parse `Name` symbol.
@@ -114,6 +115,25 @@ pub fn xml_pubid_lit(value: &str) -> IResult<&str, XmlPubidLiteral<'_>> {
             ),
         )),
         |v| XmlPubidLiteral(v),
+    )(value)
+}
+
+/// Parse `SystemLiteral` symbol.
+pub fn xml_system_lit(value: &str) -> IResult<&str, XmlSystemLiteral<'_>> {
+    map(
+        alt((
+            delimited(
+                satisfy(|c| c == '"'),
+                take_while(|c| c != '"'),
+                satisfy(|c| c == '"'),
+            ),
+            delimited(
+                satisfy(|c| c == '\''),
+                take_while(|c| c != '\''),
+                satisfy(|c| c == '\''),
+            ),
+        )),
+        |v| XmlSystemLiteral(v),
     )(value)
 }
 
@@ -189,7 +209,10 @@ fn xml_entity_value_parts(quote: char) -> impl Fn(&str) -> IResult<&str, XmlEnti
             map(take_till1(|c| c == quote || c == '&' || c == '%'), |v| {
                 XmlEntityValuePart::Literal(v)
             }),
-            map(xml_ref, |v| XmlEntityValuePart::Reference(v)),
+            map(xml_ref, |v| match v {
+                XmlReference::Char(v) => XmlEntityValuePart::CharRef(v),
+                XmlReference::Entity(v) => XmlEntityValuePart::EntityRef(v),
+            }),
             map(xml_peref, |v| XmlEntityValuePart::PEReference(v.0)),
         ))(value)
     }
@@ -204,6 +227,206 @@ pub fn xml_entity_value(value: &str) -> IResult<&str, Vec<XmlEntityValuePart<'_>
 
     Ok((value, parts))
 }
+
+fn xml_attr_value_parts(quote: char) -> impl Fn(&str) -> IResult<&str, XmlAttrValuePart<'_>> {
+    move |value| {
+        alt((
+            map(take_till1(|c| c == quote || c == '&' || c == '%'), |v| {
+                XmlAttrValuePart::Literal(v)
+            }),
+            map(xml_ref, |v| match v {
+                XmlReference::Char(v) => XmlAttrValuePart::CharRef(v),
+                XmlReference::Entity(v) => XmlAttrValuePart::EntityRef(v),
+            }),
+        ))(value)
+    }
+}
+
+/// Parse `AttrValue` symbol.
+pub fn xml_attr_value(value: &str) -> IResult<&str, Vec<XmlAttrValuePart<'_>>> {
+    let (value, (_, parts, _)) = alt((
+        tuple((tag("'"), many0(xml_attr_value_parts('\'')), tag("'"))),
+        tuple((tag("\""), many0(xml_attr_value_parts('"')), tag("\""))),
+    ))(value)?;
+
+    Ok((value, parts))
+}
+
+/// Parse `Comment` symbol.
+pub fn xml_comment(value: &str) -> IResult<&str, XmlComment<'_>> {
+    let (value, _) = tag("<!--")(value)?;
+
+    let mut input = value;
+
+    loop {
+        (input, _) = take_while(|c| c != '-' && is_char(c))(input)?;
+
+        if input.chars().next().unwrap() == '-' {
+            let comment_end;
+            (input, comment_end) = peek(opt(tag("--")))(input)?;
+
+            if comment_end.is_none() {
+                (_, input) = input.split_at(1);
+                continue;
+            }
+        }
+
+        break;
+    }
+
+    let (comment, value) = value.split_at(value.len() - input.len());
+
+    let (value, _) = tag("-->")(value)?;
+
+    Ok((value, XmlComment(comment)))
+}
+
+/// Parse xml `PI` token.
+///
+/// This function doesn't check the reserved target names 'XML','xml' and so on.
+pub fn xml_pi(value: &str) -> IResult<&str, XmlPI<'_>> {
+    let (value, _) = tag("<?")(value)?;
+
+    let (value, target) = xml_name(value)?;
+
+    let (value, space) = opt(xml_ws)(value)?;
+
+    let (value, data) = cond(space.is_some(), take_until("?>"))(value)?;
+
+    let (value, _) = tag("?>")(value)?;
+
+    Ok((
+        value,
+        XmlPI {
+            target: target.0,
+            data,
+        },
+    ))
+}
+
+/// Parse xml `CData` token.
+pub fn xml_cdata(value: &str) -> IResult<&str, XmlCData<'_>> {
+    let (value, _) = tag("<![CDATA[")(value)?;
+
+    let mut input = value;
+
+    loop {
+        (input, _) = take_while(|c| c != ']' && is_char(c))(input)?;
+
+        if input.chars().next().unwrap() == ']' {
+            let comment_end;
+            (input, comment_end) = peek(opt(tag("]]>")))(input)?;
+
+            if comment_end.is_none() {
+                (_, input) = input.split_at(1);
+                continue;
+            }
+        }
+
+        break;
+    }
+
+    let (cdata, value) = value.split_at(value.len() - input.len());
+
+    let (value, _) = tag("]]>")(value)?;
+
+    Ok((value, XmlCData(cdata)))
+}
+
+/// Parse xml `XmlDecl` token.
+pub fn xml_decl(value: &str) -> IResult<&str, XmlDecl<'_>> {
+    let (value, _) = tag("<?xml")(value)?;
+    let (value, version) = xml_version(value)?;
+    let (value, encoding) = opt(xml_encoding_decl)(value)?;
+    let (value, standalone) = opt(xml_standalone_decl)(value)?;
+    let (value, _) = opt(xml_ws)(value)?;
+    let (value, _) = tag("?>")(value)?;
+
+    Ok((
+        value,
+        XmlDecl {
+            version,
+            encoding: encoding.map(|v| v.0),
+            standalone: standalone.map(|v| v.0),
+        },
+    ))
+}
+
+/// Parse xml `Version` token.
+pub fn xml_version(value: &str) -> IResult<&str, XmlVersion> {
+    let (value, _) = xml_ws(value)?;
+    let (value, _) = tag("version")(value)?;
+    let (value, _) = xml_eq(value)?;
+    let (value, start) = satisfy(|c| c == '"' || c == '\'')(value)?;
+    let (value, version_info) = alt((
+        map(tag("1.1"), |_| XmlVersion::Version1_1),
+        map(tag("1.0"), |_| XmlVersion::Version1_0),
+    ))(value)?;
+    let (value, _) = satisfy(|c| c == start)(value)?;
+
+    Ok((value, version_info))
+}
+
+/// Parse xml `Eq` token.
+pub fn xml_eq(value: &str) -> IResult<&str, ()> {
+    let (value, _) = opt(xml_ws)(value)?;
+
+    let (value, _) = satisfy(|c| c == '=')(value)?;
+
+    let (value, _) = opt(xml_ws)(value)?;
+
+    Ok((value, ()))
+}
+
+/// Parse xml `EncName` token.
+pub fn xml_encoding_decl(value: &str) -> IResult<&str, XmlEncoding<'_>> {
+    let (value, _) = xml_ws(value)?;
+    let (value, _) = tag("encoding")(value)?;
+    let (value, _) = xml_eq(value)?;
+    let (value, start) = satisfy(|c| c == '"' || c == '\'')(value)?;
+    let (input, _) = satisfy(|c| c.is_ascii_alphabetic())(value)?;
+    let (input, _) =
+        take_while(|c: char| c == '-' || c == '.' || c == '_' || c.is_alphanumeric())(input)?;
+
+    let (enc_name, value) = value.split_at(value.len() - input.len());
+
+    let (value, _) = satisfy(|c| c == start)(value)?;
+
+    Ok((value, XmlEncoding(enc_name)))
+}
+
+/// Parse xml `SDDecl` token.
+pub fn xml_standalone_decl(value: &str) -> IResult<&str, XmlSDDecl> {
+    let (value, _) = xml_ws(value)?;
+    let (value, _) = tag("standalone")(value)?;
+    let (value, _) = xml_eq(value)?;
+    let (value, start) = satisfy(|c| c == '"' || c == '\'')(value)?;
+
+    let (value, sd_decl) = map(alt((tag("yes"), tag("no"))), |v| {
+        if v == "yes" {
+            XmlSDDecl(true)
+        } else {
+            XmlSDDecl(false)
+        }
+    })(value)?;
+
+    let (value, _) = satisfy(|c| c == start)(value)?;
+
+    Ok((value, sd_decl))
+}
+
+/// Parse xml `Misc` token.
+pub fn xml_misc(value: &str) -> IResult<&str, XmlMisc<'_>> {
+    alt((
+        map(xml_pi, |v| XmlMisc::PI {
+            target: v.target,
+            data: v.data,
+        }),
+        map(xml_comment, |v| XmlMisc::Comment(v.0)),
+        map(xml_ws, |v| XmlMisc::Space(v.0)),
+    ))(value)
+}
+
 #[cfg(test)]
 mod tests {
     use nom::error::ErrorKind;
@@ -288,6 +511,25 @@ mod tests {
     }
 
     #[test]
+    fn system_lit() {
+        let (_, value) = xml_system_lit("'\u{2122}' ").unwrap();
+
+        assert_eq!(value, XmlSystemLiteral("\u{2122}"));
+
+        let (_, value) = xml_system_lit(r#"'"hello' "#).unwrap();
+
+        assert_eq!(value, XmlSystemLiteral("\"hello"));
+
+        let (_, value) = xml_system_lit(r#""" "#).unwrap();
+
+        assert_eq!(value, XmlSystemLiteral(""));
+
+        let (_, value) = xml_system_lit(r#""'hello" "#).unwrap();
+
+        assert_eq!(value, XmlSystemLiteral("'hello"));
+    }
+
+    #[test]
     fn reference() {
         let (_, reference) = xml_ref("&#x2122; ").unwrap();
 
@@ -311,10 +553,142 @@ mod tests {
             vec![
                 XmlEntityValuePart::PEReference("hello:a"),
                 XmlEntityValuePart::Literal(" hello "),
-                XmlEntityValuePart::Reference(XmlReference::Char('™')),
+                XmlEntityValuePart::CharRef('™'),
                 XmlEntityValuePart::Literal(" world "),
-                XmlEntityValuePart::Reference(XmlReference::Entity("hello"))
+                XmlEntityValuePart::EntityRef("hello")
             ]
+        );
+    }
+
+    #[test]
+    fn attr_value() {
+        let (_, value) = xml_attr_value(r#"' hello &#x2122; world &hello;' "#).unwrap();
+
+        assert_eq!(
+            value,
+            vec![
+                XmlAttrValuePart::Literal(" hello "),
+                XmlAttrValuePart::CharRef('™'),
+                XmlAttrValuePart::Literal(" world "),
+                XmlAttrValuePart::EntityRef("hello")
+            ]
+        );
+
+        xml_attr_value(r#"'%hello:a; hello &#x2122; world &hello;' "#)
+            .expect_err("AttValue: unspport PEReference");
+    }
+
+    #[test]
+    fn comment() {
+        let (_, value) = xml_comment("<!-- hello - world& --> ").unwrap();
+
+        assert_eq!(value, XmlComment(" hello - world& "));
+
+        let (_, value) = xml_comment("<!-- declarations for <head> & <body> --> ").unwrap();
+
+        assert_eq!(value, XmlComment(" declarations for <head> & <body> "));
+
+        assert_eq!(
+            xml_comment("<!-- B+, B, or B---> "),
+            Err(nom::Err::Error(Error::new(
+                "---> ",
+                nom::error::ErrorKind::Tag
+            )))
+        );
+
+        let (_, value) = xml_comment("<!--hello - <<<!>> world&--> ").unwrap();
+
+        assert_eq!(value, XmlComment("hello - <<<!>> world&"));
+
+        assert_eq!(
+            xml_comment("<!-- hello -- world& --> "),
+            Err(nom::Err::Error(Error::new(
+                "-- world& --> ",
+                nom::error::ErrorKind::Tag
+            )))
+        );
+    }
+
+    #[test]
+    fn pi() {
+        let (_, value) = xml_pi("<?xml-stylesheet?> ").unwrap();
+
+        assert_eq!(
+            value,
+            XmlPI {
+                target: "xml-stylesheet",
+                data: None
+            }
+        );
+
+        let (_, value) = xml_pi("<?xml-stylesheet ?> ").unwrap();
+
+        assert_eq!(
+            value,
+            XmlPI {
+                target: "xml-stylesheet",
+                data: Some("")
+            }
+        );
+
+        let (_, value) = xml_pi("<?xml-stylesheet   &#160; hello<>world   ?> ").unwrap();
+
+        assert_eq!(
+            value,
+            XmlPI {
+                target: "xml-stylesheet",
+                data: Some("&#160; hello<>world   ")
+            }
+        );
+    }
+
+    #[test]
+    fn cdata() {
+        let (_, value) = xml_cdata("<![CDATA[]]> ").unwrap();
+
+        assert_eq!(value, XmlCData(""));
+
+        let (_, value) = xml_cdata("<![CDATA[ he<![CDATA[]]llo]]> ").unwrap();
+
+        assert_eq!(value, XmlCData(" he<![CDATA[]]llo"));
+    }
+
+    #[test]
+    fn xmldecl() {
+        assert_eq!(
+            xml_decl(r#"<?xml version="1.0"?> "#),
+            Ok((
+                " ",
+                XmlDecl {
+                    version: XmlVersion::Version1_0,
+                    encoding: None,
+                    standalone: None
+                }
+            ))
+        );
+
+        assert_eq!(
+            xml_decl(r#"<?xml version="1.0" encoding="utf-8"?> "#),
+            Ok((
+                " ",
+                XmlDecl {
+                    version: XmlVersion::Version1_0,
+                    encoding: Some("utf-8"),
+                    standalone: None
+                }
+            ))
+        );
+
+        assert_eq!(
+            xml_decl(r#"<?xml version="1.1"  standalone="yes"       ?> "#),
+            Ok((
+                " ",
+                XmlDecl {
+                    version: XmlVersion::Version1_1,
+                    encoding: None,
+                    standalone: Some(true)
+                }
+            ))
         );
     }
 }
