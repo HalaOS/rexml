@@ -76,7 +76,7 @@ pub enum XmlEntityValuePart<'a> {
 ///
 /// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum XmlAttrValuePart<'a> {
+pub enum XmlAttValuePart<'a> {
     CharRef(char),
 
     EntityRef(&'a str),
@@ -163,4 +163,208 @@ pub enum XmlMisc<'a> {
     },
     Comment(&'a str),
     Space(&'a str),
+}
+
+/// A token represents xml/1.1 `ExternalID`.
+///
+/// See [`XML_EBNF1.1`] for more information.
+///
+/// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum XmlExternalId<'a> {
+    System(&'a str),
+    Public {
+        public_id: &'a str,
+        system_id: &'a str,
+    },
+}
+
+/// A token represents xml/1.1 `NDataDecl`.
+///
+/// See [`XML_EBNF1.1`] for more information.
+///
+/// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct XmlNDataDecl<'a>(pub &'a str);
+
+/// A token represents xml/1.1 `DeclSep`.
+///
+/// See [`XML_EBNF1.1`] for more information.
+///
+/// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum XmlDeclSep<'a> {
+    PEReference(&'a str),
+    Space(&'a str),
+}
+
+/// A token represents xml/1.1 `Pubid`.
+///
+/// See [`XML_EBNF1.1`] for more information.
+///
+/// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct XmlPublicId<'a>(pub &'a str);
+
+/// A token represents xml/1.1 `ElementDecl`.
+///
+/// See [`XML_EBNF1.1`] for more information.
+///
+/// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct XmlNotationDecl<'a> {
+    pub name: &'a str,
+    pub id: XmlNotationId<'a>,
+}
+
+/// A token represents xml/1.1 `NotationId`.
+///
+/// See [`XML_EBNF1.1`] for more information.
+///
+/// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum XmlNotationId<'a> {
+    System(&'a str),
+    PublicSystem {
+        public_id: &'a str,
+        system_id: &'a str,
+    },
+    Public(&'a str),
+}
+
+/// A token represents xml/1.1 `EntityDecl`.
+///
+/// See [`XML_EBNF1.1`] for more information.
+///
+/// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum XmlEntityDecl<'a> {
+    GEDecl {
+        name: &'a str,
+        def: XmlEntityDef<'a>,
+    },
+
+    PEDecl {
+        name: &'a str,
+        def: XmlPEDef<'a>,
+    },
+}
+
+/// A token represents xml/1.1 `EntityDef`.
+///
+/// See [`XML_EBNF1.1`] for more information.
+///
+/// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum XmlEntityDef<'a> {
+    Value(Vec<XmlEntityValuePart<'a>>),
+    External {
+        id: XmlExternalId<'a>,
+        ndata_decl: Option<&'a str>,
+    },
+}
+
+/// A token represents xml/1.1 `PEDef`.
+///
+/// See [`XML_EBNF1.1`] for more information.
+///
+/// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum XmlPEDef<'a> {
+    Value(Vec<XmlEntityValuePart<'a>>),
+    External(XmlExternalId<'a>),
+}
+
+/// A token represents xml/1.1 `EnumeratedType`.
+///
+/// See [`XML_EBNF1.1`] for more information.
+///
+/// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum XmlEnumType<'a> {
+    Notation(Vec<&'a str>),
+    NmToken(Vec<&'a str>),
+}
+
+/// A token represents xml/1.1 `TokenizedType`.
+///
+/// See [`XML_EBNF1.1`] for more information.
+///
+/// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum XmlTokenizedType {
+    Id,
+    IdRef,
+    IdRefs,
+    Entity,
+    Entities,
+    NmToken,
+    NmTokens,
+}
+
+/// A token represents xml/1.1 `AttType`.
+///
+/// See [`XML_EBNF1.1`] for more information.
+///
+/// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum XmlAttType<'a> {
+    String,
+    Tokenized(XmlTokenizedType),
+    Notation(Vec<&'a str>),
+    NmToken(Vec<&'a str>),
+}
+
+/// A token represents xml/1.1 `DefaultDecl`.
+///
+/// See [`XML_EBNF1.1`] for more information.
+///
+/// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum XmlDefaultDecl<'a> {
+    Required,
+    Implied,
+    Fixed(Vec<XmlAttValuePart<'a>>),
+}
+
+/// A token represents xml/1.1 `AttlistDecl`.
+///
+/// See [`XML_EBNF1.1`] for more information.
+///
+/// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct XmlAttListDecl<'a> {
+    pub name: &'a str,
+    pub att_defs: Vec<XmlAttDef<'a>>,
+}
+
+/// A token represents xml/1.1 `AttDef`.
+///
+/// See [`XML_EBNF1.1`] for more information.
+///
+/// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct XmlAttDef<'a> {
+    pub name: &'a str,
+    pub att_type: XmlAttType<'a>,
+    pub default_decl: XmlDefaultDecl<'a>,
+}
+
+/// A token represents xml/1.1 `NotationId`.
+///
+/// See [`XML_EBNF1.1`] for more information.
+///
+/// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct XmlMixed<'a>(pub Option<Vec<XmlDeclName<'a>>>);
+
+/// A token represents xml/1.1 `DeclName`.
+///
+/// See [`XML_EBNF1.1`] for more information.
+///
+/// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum XmlDeclName<'a> {
+    Name(&'a str),
+    PEReference(&'a str),
 }

@@ -6,15 +6,18 @@ use nom::{
     character::streaming::satisfy,
     combinator::{cond, map, opt, peek},
     error::Error,
-    multi::{many0, separated_list1},
+    multi::{many0, separated_list0, separated_list1},
     sequence::{delimited, pair, tuple},
     IResult,
 };
 
 use crate::symbols::{
-    XmlAttrValuePart, XmlCData, XmlComment, XmlDecl, XmlEncoding, XmlEntityValuePart, XmlMisc,
-    XmlName, XmlNmToken, XmlPEReference, XmlPI, XmlPubidLiteral, XmlReference, XmlSDDecl,
-    XmlSystemLiteral, XmlVersion, XmlWhiteSpace,
+    XmlAttDef, XmlAttListDecl, XmlAttType, XmlAttValuePart, XmlCData, XmlComment, XmlDecl,
+    XmlDeclName, XmlDeclSep, XmlDefaultDecl, XmlEncoding, XmlEntityDecl, XmlEntityDef,
+    XmlEntityValuePart, XmlEnumType, XmlExternalId, XmlMisc, XmlMixed, XmlNDataDecl, XmlName,
+    XmlNmToken, XmlNotationDecl, XmlNotationId, XmlPEDef, XmlPEReference, XmlPI, XmlPubidLiteral,
+    XmlPublicId, XmlReference, XmlSDDecl, XmlSystemLiteral, XmlTokenizedType, XmlVersion,
+    XmlWhiteSpace,
 };
 
 /// [#x1-#xD7FF] | [#xE000-#xFFFD] | [#x10000-#x10FFFF],
@@ -228,22 +231,22 @@ pub fn xml_entity_value(value: &str) -> IResult<&str, Vec<XmlEntityValuePart<'_>
     Ok((value, parts))
 }
 
-fn xml_attr_value_parts(quote: char) -> impl Fn(&str) -> IResult<&str, XmlAttrValuePart<'_>> {
+fn xml_attr_value_parts(quote: char) -> impl Fn(&str) -> IResult<&str, XmlAttValuePart<'_>> {
     move |value| {
         alt((
             map(take_till1(|c| c == quote || c == '&' || c == '%'), |v| {
-                XmlAttrValuePart::Literal(v)
+                XmlAttValuePart::Literal(v)
             }),
             map(xml_ref, |v| match v {
-                XmlReference::Char(v) => XmlAttrValuePart::CharRef(v),
-                XmlReference::Entity(v) => XmlAttrValuePart::EntityRef(v),
+                XmlReference::Char(v) => XmlAttValuePart::CharRef(v),
+                XmlReference::Entity(v) => XmlAttValuePart::EntityRef(v),
             }),
         ))(value)
     }
 }
 
 /// Parse `AttrValue` symbol.
-pub fn xml_attr_value(value: &str) -> IResult<&str, Vec<XmlAttrValuePart<'_>>> {
+pub fn xml_att_value(value: &str) -> IResult<&str, Vec<XmlAttValuePart<'_>>> {
     let (value, (_, parts, _)) = alt((
         tuple((tag("'"), many0(xml_attr_value_parts('\'')), tag("'"))),
         tuple((tag("\""), many0(xml_attr_value_parts('"')), tag("\""))),
@@ -427,6 +430,269 @@ pub fn xml_misc(value: &str) -> IResult<&str, XmlMisc<'_>> {
     ))(value)
 }
 
+/// Parse xml `ExternalID` token.
+pub fn xml_external_id(value: &str) -> IResult<&str, XmlExternalId<'_>> {
+    let (value, start) = alt((tag("SYSTEM"), tag("PUBLIC")))(value)?;
+
+    let (value, _) = xml_ws(value)?;
+
+    let (value, external_id) = if start == "SYSTEM" {
+        let (value, system_id) = xml_system_lit(value)?;
+
+        (value, XmlExternalId::System(system_id.0))
+    } else {
+        let (value, public_id) = xml_pubid_lit(value)?;
+        let (value, _) = xml_ws(value)?;
+        let (value, system_id) = xml_system_lit(value)?;
+
+        (
+            value,
+            XmlExternalId::Public {
+                public_id: public_id.0,
+                system_id: system_id.0,
+            },
+        )
+    };
+
+    Ok((value, external_id))
+}
+
+/// Parse xml `PublicID` token.
+pub fn xml_public_id(value: &str) -> IResult<&str, XmlPublicId<'_>> {
+    let (value, _) = tag("PUBLIC")(value)?;
+    let (value, _) = xml_ws(value)?;
+
+    map(xml_pubid_lit, |v| XmlPublicId(v.0))(value)
+}
+
+/// Parse xml `NDataDecl` token.
+pub fn xml_ndata_decl(value: &str) -> IResult<&str, XmlNDataDecl<'_>> {
+    map(
+        tuple((xml_ws, tag("NDATA"), xml_ws, xml_name)),
+        |(_, _, _, name)| XmlNDataDecl(name.0),
+    )(value)
+}
+
+/// Parse xml `DeclSep` token.
+pub fn xml_decl_sep(value: &str) -> IResult<&str, XmlDeclSep<'_>> {
+    alt((
+        map(xml_peref, |v| XmlDeclSep::PEReference(v.0)),
+        map(xml_ws, |v| XmlDeclSep::Space(v.0)),
+    ))(value)
+}
+
+/// Parse xml `NotationDecl` token.
+pub fn xml_notation_decl(value: &str) -> IResult<&str, XmlNotationDecl<'_>> {
+    let (value, _) = tag("<!NOTATION")(value)?;
+    let (value, _) = xml_ws(value)?;
+    let (value, name) = xml_name(value)?;
+    let (value, _) = xml_ws(value)?;
+
+    let (value, id) = alt((
+        map(xml_external_id, |v| match v {
+            XmlExternalId::System(v) => XmlNotationId::System(v),
+            XmlExternalId::Public {
+                public_id,
+                system_id,
+            } => XmlNotationId::PublicSystem {
+                public_id,
+                system_id,
+            },
+        }),
+        map(xml_public_id, |v| XmlNotationId::Public(v.0)),
+    ))(value)?;
+
+    let (value, _) = opt(xml_ws)(value)?;
+
+    let (value, _) = satisfy(|c| c == '>')(value)?;
+
+    Ok((value, XmlNotationDecl { name: name.0, id }))
+}
+
+/// Parse xml `NotationDecl` token.
+pub fn xml_entity_decl(value: &str) -> IResult<&str, XmlEntityDecl<'_>> {
+    let (value, _) = tuple((tag("<!ENTITY"), xml_ws))(value)?;
+
+    let (mut value, is_pe) = opt(satisfy(|c| c == '%'))(value)?;
+
+    if is_pe.is_some() {
+        (value, _) = xml_ws(value)?;
+    }
+
+    let (value, name) = xml_name(value)?;
+
+    let (value, _) = xml_ws(value)?;
+
+    let (value, decl) = if is_pe.is_none() {
+        map(
+            alt((
+                map(xml_entity_value, |v| XmlEntityDef::Value(v)),
+                map(
+                    tuple((xml_external_id, opt(xml_ndata_decl))),
+                    |(id, ndata_decl)| XmlEntityDef::External {
+                        id,
+                        ndata_decl: ndata_decl.map(|v| v.0),
+                    },
+                ),
+            )),
+            |v| XmlEntityDecl::GEDecl {
+                name: name.0,
+                def: v,
+            },
+        )(value)?
+    } else {
+        map(
+            alt((
+                map(xml_entity_value, |v| XmlPEDef::Value(v)),
+                map(xml_external_id, |id| XmlPEDef::External(id)),
+            )),
+            |v| XmlEntityDecl::PEDecl {
+                name: name.0,
+                def: v,
+            },
+        )(value)?
+    };
+
+    let (value, _) = opt(xml_ws)(value)?;
+
+    let (value, _) = satisfy(|c| c == '>')(value)?;
+
+    Ok((value, decl))
+}
+
+/// Parse xml `EnumeratedType` token.
+pub fn xml_enum_type(value: &str) -> IResult<&str, XmlEnumType<'_>> {
+    alt((
+        map(
+            tuple((
+                tag("NOTATION"),
+                xml_ws,
+                delimited(
+                    tag("("),
+                    separated_list1(tag("|"), tuple((opt(xml_ws), xml_name, opt(xml_ws)))),
+                    tag(")"),
+                ),
+            )),
+            |(_, _, v)| XmlEnumType::Notation(v.into_iter().map(|(_, v, _)| v.0).collect()),
+        ),
+        map(
+            delimited(
+                tag("("),
+                separated_list1(tag("|"), tuple((opt(xml_ws), xml_nmtoken, opt(xml_ws)))),
+                tag(")"),
+            ),
+            |v| XmlEnumType::NmToken(v.into_iter().map(|(_, v, _)| v.0).collect()),
+        ),
+    ))(value)
+}
+
+/// Parse xml `TokenizedType` token.
+pub fn xml_tokenized_type(value: &str) -> IResult<&str, XmlTokenizedType> {
+    alt((
+        map(tag("IDREFS"), |_| XmlTokenizedType::IdRefs),
+        map(tag("IDREF"), |_| XmlTokenizedType::IdRef),
+        map(tag("ID"), |_| XmlTokenizedType::Id),
+        map(tag("ENTITY"), |_| XmlTokenizedType::Entity),
+        map(tag("ENTITIES"), |_| XmlTokenizedType::Entities),
+        map(tag("NMTOKENS"), |_| XmlTokenizedType::NmTokens),
+        map(tag("NMTOKEN"), |_| XmlTokenizedType::NmToken),
+    ))(value)
+}
+
+/// Parse xml `TokenizedType` token.
+pub fn xml_att_type(value: &str) -> IResult<&str, XmlAttType<'_>> {
+    alt((
+        map(tag("CDATA"), |_| XmlAttType::String),
+        map(xml_enum_type, |v| match v {
+            XmlEnumType::Notation(v) => XmlAttType::Notation(v),
+            XmlEnumType::NmToken(v) => XmlAttType::NmToken(v),
+        }),
+        map(xml_tokenized_type, |v| XmlAttType::Tokenized(v)),
+    ))(value)
+}
+
+/// Parse xml `DefaultDecl` token.
+pub fn xml_default_decl(value: &str) -> IResult<&str, XmlDefaultDecl<'_>> {
+    alt((
+        map(tag("#REQUIRED"), |_| XmlDefaultDecl::Required),
+        map(tag("#IMPLIED"), |_| XmlDefaultDecl::Implied),
+        map(
+            tuple((opt(tuple((tag("#FIXED"), xml_ws))), xml_att_value)),
+            |(_, v)| XmlDefaultDecl::Fixed(v),
+        ),
+    ))(value)
+}
+
+/// Parse xml `DefaultDecl` token.
+pub fn xml_att_list_decl(value: &str) -> IResult<&str, XmlAttListDecl<'_>> {
+    map(
+        tuple((
+            tag("<!ATTLIST"),
+            xml_ws,
+            xml_name,
+            many0(map(
+                tuple((
+                    xml_ws,
+                    xml_name,
+                    xml_ws,
+                    xml_att_type,
+                    xml_ws,
+                    xml_default_decl,
+                )),
+                |(_, name, _, att_type, _, default_decl)| XmlAttDef {
+                    name: name.0,
+                    att_type,
+                    default_decl,
+                },
+            )),
+            opt(xml_ws),
+            tag(">"),
+        )),
+        |(_, _, name, att_defs, _, _)| XmlAttListDecl {
+            name: name.0,
+            att_defs,
+        },
+    )(value)
+}
+
+/// Parse xml `Mixed` token.
+pub fn xml_mixed(value: &str) -> IResult<&str, XmlMixed<'_>> {
+    let (value, _) = satisfy(|c| c == '(')(value)?;
+
+    let (value, _) = opt(xml_ws)(value)?;
+
+    let (value, _) = tag("#PCDATA")(value)?;
+
+    let (value, _) = opt(xml_ws)(value)?;
+
+    let (value, list) = opt(tuple((opt(xml_ws), satisfy(|c| c == '|'), opt(xml_ws))))(value)?;
+
+    let (value, types) = if list.is_some() {
+        let (value, types) = separated_list0(
+            tuple((opt(xml_ws), satisfy(|c| c == '|'), opt(xml_ws))),
+            alt((
+                map(xml_peref, |v| XmlDeclName::PEReference(v.0)),
+                map(xml_name, |v| XmlDeclName::Name(v.0)),
+            )),
+        )(value)?;
+
+        (value, Some(types))
+    } else {
+        (value, None)
+    };
+
+    let (value, _) = opt(xml_ws)(value)?;
+
+    let value = if types.is_none() {
+        let (value, _) = satisfy(|c| c == ')')(value)?;
+        value
+    } else {
+        let (value, _) = tag(")*")(value)?;
+        value
+    };
+
+    Ok((value, XmlMixed(types)))
+}
 #[cfg(test)]
 mod tests {
     use nom::error::ErrorKind;
@@ -562,19 +828,19 @@ mod tests {
 
     #[test]
     fn attr_value() {
-        let (_, value) = xml_attr_value(r#"' hello &#x2122; world &hello;' "#).unwrap();
+        let (_, value) = xml_att_value(r#"' hello &#x2122; world &hello;' "#).unwrap();
 
         assert_eq!(
             value,
             vec![
-                XmlAttrValuePart::Literal(" hello "),
-                XmlAttrValuePart::CharRef('™'),
-                XmlAttrValuePart::Literal(" world "),
-                XmlAttrValuePart::EntityRef("hello")
+                XmlAttValuePart::Literal(" hello "),
+                XmlAttValuePart::CharRef('™'),
+                XmlAttValuePart::Literal(" world "),
+                XmlAttValuePart::EntityRef("hello")
             ]
         );
 
-        xml_attr_value(r#"'%hello:a; hello &#x2122; world &hello;' "#)
+        xml_att_value(r#"'%hello:a; hello &#x2122; world &hello;' "#)
             .expect_err("AttValue: unspport PEReference");
     }
 
@@ -689,6 +955,314 @@ mod tests {
                     standalone: Some(true)
                 }
             ))
+        );
+    }
+
+    #[test]
+    fn external_id() {
+        let (_, id) =
+            xml_external_id(r#"SYSTEM "http://www.textuality.com/boilerplate/OpenHatch.xml" "#)
+                .unwrap();
+
+        assert_eq!(
+            id,
+            XmlExternalId::System("http://www.textuality.com/boilerplate/OpenHatch.xml")
+        );
+
+        let (_, id) = xml_external_id(
+            r#"PUBLIC "-//Textuality//TEXT Standard open-hatch boilerplate//EN" 
+                "http://www.textuality.com/boilerplate/OpenHatch.xml" "#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            id,
+            XmlExternalId::Public {
+                public_id: "-//Textuality//TEXT Standard open-hatch boilerplate//EN",
+                system_id: "http://www.textuality.com/boilerplate/OpenHatch.xml"
+            }
+        );
+    }
+
+    #[test]
+    fn public_id() {
+        let (_, value) = xml_public_id("PUBLIC '' ").unwrap();
+
+        assert_eq!(value, XmlPublicId(""));
+
+        let (_, value) = xml_public_id(r#"PUBLIC "'hello" "#).unwrap();
+
+        assert_eq!(value, XmlPublicId("'hello"));
+
+        assert_eq!(
+            xml_public_id("PUBLIC '\u{2122}' "),
+            Err(nom::Err::Error(Error::new(
+                "\u{2122}' ",
+                nom::error::ErrorKind::Satisfy
+            )))
+        );
+    }
+
+    #[test]
+    fn notation_decl() {
+        assert_eq!(
+            xml_notation_decl(r#"<!NOTATION PNG SYSTEM "image/png"> "#),
+            Ok((
+                " ",
+                XmlNotationDecl {
+                    name: "PNG",
+                    id: XmlNotationId::System("image/png")
+                }
+            ))
+        );
+
+        assert_eq!(
+            xml_notation_decl(
+                r#"<!NOTATION PNG PUBLIC "-//Textuality//TEXT Standard open-hatch boilerplate//EN" 
+                "http://www.textuality.com/boilerplate/OpenHatch.xml" > "#
+            ),
+            Ok((
+                " ",
+                XmlNotationDecl {
+                    name: "PNG",
+                    id: XmlNotationId::PublicSystem {
+                        public_id: "-//Textuality//TEXT Standard open-hatch boilerplate//EN",
+                        system_id: "http://www.textuality.com/boilerplate/OpenHatch.xml"
+                    }
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn ndata_decl() {
+        assert_eq!(
+            xml_ndata_decl(r#" NDATA gif "#),
+            Ok((" ", XmlNDataDecl("gif")))
+        );
+    }
+
+    #[test]
+    fn entity_decl() {
+        assert_eq!(
+            xml_entity_decl(
+                r#"<!ENTITY picture SYSTEM "http://www.somesite.com/somePic.gif" NDATA GIF> "#
+            ),
+            Ok((
+                " ",
+                XmlEntityDecl::GEDecl {
+                    name: "picture",
+                    def: XmlEntityDef::External {
+                        id: XmlExternalId::System("http://www.somesite.com/somePic.gif"),
+                        ndata_decl: Some("GIF")
+                    }
+                }
+            ))
+        );
+
+        assert_eq!(
+            xml_entity_decl(
+                r#"<!ENTITY Pub-Status "This is a pre-release of the specification."> "#
+            ),
+            Ok((
+                " ",
+                XmlEntityDecl::GEDecl {
+                    name: "Pub-Status",
+                    def: XmlEntityDef::Value(vec![XmlEntityValuePart::Literal(
+                        "This is a pre-release of the specification."
+                    )])
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn enum_type() {
+        assert_eq!(
+            xml_enum_type(r#"NOTATION (js|cs|perl) "#),
+            Ok((" ", XmlEnumType::Notation(vec!["js", "cs", "perl"])))
+        );
+
+        assert_eq!(
+            xml_enum_type(r#"(apple | pear | bannan) "#),
+            Ok((" ", XmlEnumType::NmToken(vec!["apple", "pear", "bannan"])))
+        );
+    }
+
+    #[test]
+    fn tokenized_type() {
+        assert_eq!(
+            xml_tokenized_type(r#"ID "#),
+            Ok((" ", XmlTokenizedType::Id))
+        );
+
+        assert_eq!(
+            xml_tokenized_type(r#"IDREF "#),
+            Ok((" ", XmlTokenizedType::IdRef))
+        );
+
+        assert_eq!(
+            xml_tokenized_type(r#"IDREFS "#),
+            Ok((" ", XmlTokenizedType::IdRefs))
+        );
+
+        assert_eq!(
+            xml_tokenized_type(r#"ENTITY "#),
+            Ok((" ", XmlTokenizedType::Entity))
+        );
+
+        assert_eq!(
+            xml_tokenized_type(r#"ENTITIES "#),
+            Ok((" ", XmlTokenizedType::Entities))
+        );
+
+        assert_eq!(
+            xml_tokenized_type(r#"NMTOKEN "#),
+            Ok((" ", XmlTokenizedType::NmToken))
+        );
+
+        assert_eq!(
+            xml_tokenized_type(r#"NMTOKENS "#),
+            Ok((" ", XmlTokenizedType::NmTokens))
+        );
+    }
+
+    #[test]
+    fn att_type() {
+        assert_eq!(
+            xml_att_type(r#"NMTOKENS "#),
+            Ok((" ", XmlAttType::Tokenized(XmlTokenizedType::NmTokens)))
+        );
+
+        assert_eq!(xml_att_type(r#"CDATA "#), Ok((" ", XmlAttType::String)));
+
+        assert_eq!(
+            xml_att_type(r#"NOTATION (js|cs|perl) "#),
+            Ok((" ", XmlAttType::Notation(vec!["js", "cs", "perl"])))
+        );
+
+        assert_eq!(
+            xml_att_type(r#"(apple | pear | bannan) "#),
+            Ok((" ", XmlAttType::NmToken(vec!["apple", "pear", "bannan"])))
+        );
+    }
+
+    #[test]
+    fn default_decl() {
+        assert_eq!(
+            xml_default_decl(r#"#REQUIRED "#),
+            Ok((" ", XmlDefaultDecl::Required))
+        );
+
+        assert_eq!(
+            xml_default_decl(r#"#IMPLIED "#),
+            Ok((" ", XmlDefaultDecl::Implied))
+        );
+
+        assert_eq!(
+            xml_default_decl(r#"#FIXED   ' hello &#x2122; world &hello;' "#),
+            Ok((
+                " ",
+                XmlDefaultDecl::Fixed(vec![
+                    XmlAttValuePart::Literal(" hello "),
+                    XmlAttValuePart::CharRef('™'),
+                    XmlAttValuePart::Literal(" world "),
+                    XmlAttValuePart::EntityRef("hello")
+                ])
+            ))
+        );
+    }
+
+    #[test]
+    fn att_list_decl() {
+        assert_eq!(
+            xml_att_list_decl(r#"<!ATTLIST test myAttr CDATA #IMPLIED> "#),
+            Ok((
+                " ",
+                XmlAttListDecl {
+                    name: "test",
+                    att_defs: vec![XmlAttDef {
+                        name: "myAttr",
+                        att_type: XmlAttType::String,
+                        default_decl: XmlDefaultDecl::Implied
+                    }]
+                }
+            ))
+        );
+
+        assert_eq!(
+            xml_att_list_decl(r#"<!ATTLIST test fruit (apple | pear | bannan) #REQUIRED> "#),
+            Ok((
+                " ",
+                XmlAttListDecl {
+                    name: "test",
+                    att_defs: vec![XmlAttDef {
+                        name: "fruit",
+                        att_type: XmlAttType::NmToken(vec!["apple", "pear", "bannan"]),
+                        default_decl: XmlDefaultDecl::Required
+                    }]
+                }
+            ))
+        );
+
+        assert_eq!(
+            xml_att_list_decl(
+                r#"<!ATTLIST test fruit (apple | pear | bannan) #REQUIRED     
+                myAttr CDATA #IMPLIED > "#
+            ),
+            Ok((
+                " ",
+                XmlAttListDecl {
+                    name: "test",
+                    att_defs: vec![
+                        XmlAttDef {
+                            name: "fruit",
+                            att_type: XmlAttType::NmToken(vec!["apple", "pear", "bannan"]),
+                            default_decl: XmlDefaultDecl::Required
+                        },
+                        XmlAttDef {
+                            name: "myAttr",
+                            att_type: XmlAttType::String,
+                            default_decl: XmlDefaultDecl::Implied
+                        }
+                    ]
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn mixed() {
+        let (_, mixed) = xml_mixed(r#"(#PCDATA) "#).unwrap();
+
+        assert_eq!(mixed, XmlMixed(None));
+
+        assert_eq!(xml_mixed(r#"(#PCDATA)* "#), Ok(("* ", XmlMixed(None))));
+
+        let (_, mixed) = xml_mixed(r#"(#PCDATA|a|ul|b|i|em)* "#).unwrap();
+
+        assert_eq!(
+            mixed,
+            XmlMixed(Some(vec![
+                XmlDeclName::Name("a"),
+                XmlDeclName::Name("ul"),
+                XmlDeclName::Name("b"),
+                XmlDeclName::Name("i"),
+                XmlDeclName::Name("em")
+            ]))
+        );
+
+        let (_, mixed) =
+            xml_mixed(r#"(#PCDATA | %font; | %phrase; | %special; | %form;)* "#).unwrap();
+
+        assert_eq!(
+            mixed,
+            XmlMixed(Some(vec![
+                XmlDeclName::PEReference("font"),
+                XmlDeclName::PEReference("phrase"),
+                XmlDeclName::PEReference("special"),
+                XmlDeclName::PEReference("form"),
+            ]))
         );
     }
 }
