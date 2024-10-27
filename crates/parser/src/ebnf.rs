@@ -12,11 +12,12 @@ use nom::{
 };
 
 use crate::symbols::{
-    XmlAttDef, XmlAttListDecl, XmlAttType, XmlAttValuePart, XmlCData, XmlComment, XmlDecl,
-    XmlDeclName, XmlDeclSep, XmlDefaultDecl, XmlEncoding, XmlEntityDecl, XmlEntityDef,
-    XmlEntityValuePart, XmlEnumType, XmlExternalId, XmlMisc, XmlMixed, XmlNDataDecl, XmlName,
-    XmlNmToken, XmlNotationDecl, XmlNotationId, XmlPEDef, XmlPEReference, XmlPI, XmlPubidLiteral,
-    XmlPublicId, XmlReference, XmlSDDecl, XmlSystemLiteral, XmlTokenizedType, XmlVersion,
+    XmlAttDef, XmlAttListDecl, XmlAttType, XmlAttValuePart, XmlCData, XmlCP, XmlChildren,
+    XmlComment, XmlContentSpec, XmlDecl, XmlDeclName, XmlDeclSep, XmlDefaultDecl, XmlDocTypeDecl,
+    XmlElementDecl, XmlEncoding, XmlEntityDecl, XmlEntityDef, XmlEntityValuePart, XmlEnumType,
+    XmlExternalId, XmlMarkupDecl, XmlMisc, XmlMixed, XmlNDataDecl, XmlName, XmlNmToken,
+    XmlNotationDecl, XmlNotationId, XmlPEDef, XmlPEReference, XmlPI, XmlPubidLiteral, XmlPublicId,
+    XmlReference, XmlRepeat, XmlSDDecl, XmlSystemLiteral, XmlTokenizedType, XmlVersion,
     XmlWhiteSpace,
 };
 
@@ -476,8 +477,8 @@ pub fn xml_ndata_decl(value: &str) -> IResult<&str, XmlNDataDecl<'_>> {
 /// Parse xml `DeclSep` token.
 pub fn xml_decl_sep(value: &str) -> IResult<&str, XmlDeclSep<'_>> {
     alt((
-        map(xml_peref, |v| XmlDeclSep::PEReference(v.0)),
         map(xml_ws, |v| XmlDeclSep::Space(v.0)),
+        map(xml_peref, |v| XmlDeclSep::PEReference(v.0)),
     ))(value)
 }
 
@@ -670,10 +671,7 @@ pub fn xml_mixed(value: &str) -> IResult<&str, XmlMixed<'_>> {
     let (value, types) = if list.is_some() {
         let (value, types) = separated_list0(
             tuple((opt(xml_ws), satisfy(|c| c == '|'), opt(xml_ws))),
-            alt((
-                map(xml_peref, |v| XmlDeclName::PEReference(v.0)),
-                map(xml_name, |v| XmlDeclName::Name(v.0)),
-            )),
+            xml_decl_name,
         )(value)?;
 
         (value, Some(types))
@@ -693,6 +691,120 @@ pub fn xml_mixed(value: &str) -> IResult<&str, XmlMixed<'_>> {
 
     Ok((value, XmlMixed(types)))
 }
+
+/// Parse xml `DeclName` token.
+pub fn xml_decl_name(value: &str) -> IResult<&str, XmlDeclName<'_>> {
+    alt((
+        map(xml_peref, |v| XmlDeclName::PEReference(v.0)),
+        map(xml_name, |v| XmlDeclName::Name(v.0)),
+    ))(value)
+}
+
+/// Parse xml `Repeat` token.
+pub fn xml_repeat(value: &str) -> IResult<&str, XmlRepeat> {
+    alt((
+        map(tag("?"), |_| XmlRepeat::ZeroOrOne),
+        map(tag("*"), |_| XmlRepeat::ZeroOrMany),
+        map(tag("+"), |_| XmlRepeat::OneOrMany),
+    ))(value)
+}
+
+/// Parse xml `cp` token.
+pub fn xml_cp(value: &str) -> IResult<&str, XmlCP<'_>> {
+    alt((
+        map(xml_decl_name, |v| XmlCP::Name(v)),
+        map(xml_children, |v| XmlCP::Children(v)),
+    ))(value)
+}
+
+/// Parse xml `children` token.
+pub fn xml_children(value: &str) -> IResult<&str, XmlChildren<'_>> {
+    alt((
+        map(tuple((xml_choice, opt(xml_repeat))), |(cps, repeat)| {
+            XmlChildren::Choice { cps, repeat }
+        }),
+        map(tuple((xml_seq, opt(xml_repeat))), |(cps, repeat)| {
+            XmlChildren::Seq { cps, repeat }
+        }),
+    ))(value)
+}
+
+/// Parse xml `children` token.
+pub fn xml_choice(value: &str) -> IResult<&str, Vec<XmlCP<'_>>> {
+    delimited(
+        tuple((tag("("), opt(xml_ws))),
+        separated_list1(tuple((opt(xml_ws), tag("|"), opt(xml_ws))), xml_cp),
+        tuple((opt(xml_ws), tag(")"))),
+    )(value)
+}
+
+/// Parse xml `children` token.
+pub fn xml_seq(value: &str) -> IResult<&str, Vec<XmlCP<'_>>> {
+    delimited(
+        tuple((tag("("), opt(xml_ws))),
+        separated_list0(tuple((opt(xml_ws), tag(","), opt(xml_ws))), xml_cp),
+        tuple((opt(xml_ws), tag(")"))),
+    )(value)
+}
+
+/// Parse xml `children` token.
+pub fn xml_element_decl(value: &str) -> IResult<&str, XmlElementDecl<'_>> {
+    map(
+        tuple((
+            tag("<!ELEMENT"),
+            xml_ws,
+            xml_decl_name,
+            xml_ws,
+            alt((
+                map(tag("EMPTY"), |_| XmlContentSpec::Empty),
+                map(tag("ANY"), |_| XmlContentSpec::Any),
+                map(xml_peref, |v| XmlContentSpec::PEReference(v.0)),
+                map(xml_mixed, |v| XmlContentSpec::Mixed(v)),
+                map(xml_children, |v| XmlContentSpec::Children(v)),
+            )),
+            opt(xml_ws),
+            tag(">"),
+        )),
+        |(_, _, name, _, content, _, _)| XmlElementDecl { name, content },
+    )(value)
+}
+
+/// Parse xml `doctypedecl` token.
+pub fn xml_doctype_decl(value: &str) -> IResult<&str, XmlDocTypeDecl<'_>> {
+    map(
+        tuple((
+            tag("<!DOCTYPE"),
+            xml_ws,
+            xml_name,
+            opt(tuple((xml_ws, xml_external_id))),
+            opt(xml_ws),
+            opt(delimited(
+                tag("["),
+                many0(alt((
+                    map(xml_decl_sep, |v| match v {
+                        XmlDeclSep::PEReference(v) => XmlMarkupDecl::PEReference(v),
+                        XmlDeclSep::Space(v) => XmlMarkupDecl::Space(v),
+                    }),
+                    map(xml_element_decl, |v| XmlMarkupDecl::ElementDecl(v)),
+                    map(xml_att_list_decl, |v| XmlMarkupDecl::AttListDecl(v)),
+                    map(xml_entity_decl, |v| XmlMarkupDecl::EntityDecl(v)),
+                    map(xml_notation_decl, |v| XmlMarkupDecl::Notation(v)),
+                    map(xml_pi, |v| XmlMarkupDecl::PI(v)),
+                    map(xml_comment, |v| XmlMarkupDecl::Comment(v)),
+                ))),
+                tag("]"),
+            )),
+            opt(xml_ws),
+            tag(">"),
+        )),
+        |(_, _, name, external_id, _, int_subset, _, _)| XmlDocTypeDecl {
+            name: name.0,
+            external_id: external_id.map(|(_, id)| id),
+            int_subset,
+        },
+    )(value)
+}
+
 #[cfg(test)]
 mod tests {
     use nom::error::ErrorKind;
@@ -1263,6 +1375,112 @@ mod tests {
                 XmlDeclName::PEReference("special"),
                 XmlDeclName::PEReference("form"),
             ]))
+        );
+    }
+
+    #[test]
+    fn element_decl() {
+        assert_eq!(
+            xml_element_decl(r#"<!ELEMENT br EMPTY> "#),
+            Ok((
+                " ",
+                XmlElementDecl {
+                    name: XmlDeclName::Name("br"),
+                    content: XmlContentSpec::Empty
+                }
+            ))
+        );
+
+        assert_eq!(
+            xml_element_decl(r#"<!ELEMENT p (#PCDATA|emph)* > "#),
+            Ok((
+                " ",
+                XmlElementDecl {
+                    name: XmlDeclName::Name("p"),
+                    content: XmlContentSpec::Mixed(XmlMixed(Some(vec![XmlDeclName::Name("emph")])))
+                }
+            ))
+        );
+
+        assert_eq!(
+            xml_element_decl(r#"<!ELEMENT %name.para; %content.para; > "#),
+            Ok((
+                " ",
+                XmlElementDecl {
+                    name: XmlDeclName::PEReference("name.para"),
+                    content: XmlContentSpec::PEReference("content.para")
+                }
+            ))
+        );
+
+        assert_eq!(
+            xml_element_decl(r#"<!ELEMENT container ANY> "#),
+            Ok((
+                " ",
+                XmlElementDecl {
+                    name: XmlDeclName::Name("container"),
+                    content: XmlContentSpec::Any
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn doctype_decl() {
+        assert_eq!(
+            xml_doctype_decl(
+                r#"<!DOCTYPE note [
+                                    <!ELEMENT note (to,from,heading,body)>
+                                    <!ELEMENT to (#PCDATA)>
+                                    <!ELEMENT from (#PCDATA)>
+                                    <!ELEMENT heading (#PCDATA)>
+                                    <!ELEMENT body (#PCDATA)>
+                ]>
+                "#
+            ),
+            Ok((
+                "\n                ",
+                XmlDocTypeDecl {
+                    name: "note",
+                    external_id: None,
+                    int_subset: Some(vec![
+                        XmlMarkupDecl::Space("\n                                    "),
+                        XmlMarkupDecl::ElementDecl(XmlElementDecl {
+                            name: XmlDeclName::Name("note"),
+                            content: XmlContentSpec::Children(XmlChildren::Seq {
+                                cps: vec![
+                                    XmlCP::Name(XmlDeclName::Name("to")),
+                                    XmlCP::Name(XmlDeclName::Name("from")),
+                                    XmlCP::Name(XmlDeclName::Name("heading")),
+                                    XmlCP::Name(XmlDeclName::Name("body"))
+                                ],
+                                repeat: None
+                            })
+                        }),
+                        XmlMarkupDecl::Space("\n                                    "),
+                        XmlMarkupDecl::ElementDecl(XmlElementDecl {
+                            name: XmlDeclName::Name("to"),
+                            content: XmlContentSpec::Mixed(XmlMixed(None))
+                        }),
+                        XmlMarkupDecl::Space("\n                                    "),
+                        XmlMarkupDecl::ElementDecl(XmlElementDecl {
+                            name: XmlDeclName::Name("from"),
+                            content: XmlContentSpec::Mixed(XmlMixed(None))
+                        }),
+                        XmlMarkupDecl::Space("\n                                    "),
+                        XmlMarkupDecl::ElementDecl(XmlElementDecl {
+                            name: XmlDeclName::Name("heading"),
+                            content: XmlContentSpec::Mixed(XmlMixed(None))
+                        }),
+                        XmlMarkupDecl::Space("\n                                    "),
+                        XmlMarkupDecl::ElementDecl(XmlElementDecl {
+                            name: XmlDeclName::Name("body"),
+                            content: XmlContentSpec::Mixed(XmlMixed(None))
+                        }),
+                        XmlMarkupDecl::Space("\n                "),
+                    ])
+                }
+            ))
         );
     }
 }

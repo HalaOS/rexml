@@ -368,3 +368,97 @@ pub enum XmlDeclName<'a> {
     Name(&'a str),
     PEReference(&'a str),
 }
+
+/// A token represents xml/1.1 `children`.
+///
+/// See [`XML_EBNF1.1`] for more information.
+///
+/// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum XmlChildren<'a> {
+    Choice {
+        cps: Vec<XmlCP<'a>>,
+        repeat: Option<XmlRepeat>,
+    },
+    Seq {
+        cps: Vec<XmlCP<'a>>,
+        repeat: Option<XmlRepeat>,
+    },
+}
+
+/// A token represents xml/1.1 `cp`.
+///
+/// See [`XML_EBNF1.1`] for more information.
+///
+/// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum XmlCP<'a> {
+    Name(XmlDeclName<'a>),
+    Children(XmlChildren<'a>),
+}
+
+/// A token represents xml/1.1 `Repeat`.
+///
+/// See [`XML_EBNF1.1`] for more information.
+///
+/// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum XmlRepeat {
+    ZeroOrOne,
+    ZeroOrMany,
+    OneOrMany,
+}
+
+/// A token represents xml/1.1 `contentspec`.
+///
+/// See [`XML_EBNF1.1`] for more information.
+///
+/// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum XmlContentSpec<'a> {
+    Empty,
+    Any,
+    Mixed(XmlMixed<'a>),
+    Children(XmlChildren<'a>),
+    PEReference(&'a str),
+}
+
+/// A token represents xml/1.1 `elementdecl`.
+///
+/// See [`XML_EBNF1.1`] for more information.
+///
+/// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct XmlElementDecl<'a> {
+    pub name: XmlDeclName<'a>,
+    pub content: XmlContentSpec<'a>,
+}
+
+/// A token represents xml/1.1 `doctypedecl`.
+///
+/// See [`XML_EBNF1.1`] for more information.
+///
+/// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct XmlDocTypeDecl<'a> {
+    pub name: &'a str,
+    pub external_id: Option<XmlExternalId<'a>>,
+    pub int_subset: Option<Vec<XmlMarkupDecl<'a>>>,
+}
+
+/// A token represents xml/1.1 `markupdecl`.
+///
+/// See [`XML_EBNF1.1`] for more information.
+///
+/// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum XmlMarkupDecl<'a> {
+    ElementDecl(XmlElementDecl<'a>),
+    AttListDecl(XmlAttListDecl<'a>),
+    EntityDecl(XmlEntityDecl<'a>),
+    Notation(XmlNotationDecl<'a>),
+    PI(XmlPI<'a>),
+    Comment(XmlComment<'a>),
+    PEReference(&'a str),
+    Space(&'a str),
+}
