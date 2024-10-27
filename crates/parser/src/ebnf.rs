@@ -16,9 +16,9 @@ use crate::symbols::{
     XmlComment, XmlContentSpec, XmlDecl, XmlDeclName, XmlDeclSep, XmlDefaultDecl, XmlDocTypeDecl,
     XmlElementDecl, XmlEncoding, XmlEntityDecl, XmlEntityDef, XmlEntityValuePart, XmlEnumType,
     XmlExternalId, XmlMarkupDecl, XmlMisc, XmlMixed, XmlNDataDecl, XmlName, XmlNmToken,
-    XmlNotationDecl, XmlNotationId, XmlPEDef, XmlPEReference, XmlPI, XmlPubidLiteral, XmlPublicId,
-    XmlReference, XmlRepeat, XmlSDDecl, XmlSystemLiteral, XmlTokenizedType, XmlVersion,
-    XmlWhiteSpace,
+    XmlNotationDecl, XmlNotationId, XmlPEDef, XmlPEReference, XmlPI, XmlProlog, XmlPubidLiteral,
+    XmlPublicId, XmlReference, XmlRepeat, XmlSDDecl, XmlSystemLiteral, XmlTokenizedType,
+    XmlVersion, XmlWhiteSpace,
 };
 
 /// [#x1-#xD7FF] | [#xE000-#xFFFD] | [#x10000-#x10FFFF],
@@ -805,6 +805,34 @@ pub fn xml_doctype_decl(value: &str) -> IResult<&str, XmlDocTypeDecl<'_>> {
     )(value)
 }
 
+/// Parse xml `children` token.
+pub fn xml_prolog(value: &str) -> IResult<&str, XmlProlog<'_>> {
+    map(
+        tuple((
+            xml_decl,
+            many0(xml_misc),
+            opt(tuple((xml_doctype_decl, many0(xml_misc)))),
+        )),
+        |(decl, misc_one, rest)| {
+            if let Some((doctype_decl, misc_two)) = rest {
+                XmlProlog {
+                    decl,
+                    misc_one,
+                    doctype_decl: Some(doctype_decl),
+                    misc_two: Some(misc_two),
+                }
+            } else {
+                XmlProlog {
+                    decl,
+                    misc_one,
+                    doctype_decl: None,
+                    misc_two: None,
+                }
+            }
+        },
+    )(value)
+}
+
 #[cfg(test)]
 mod tests {
     use nom::error::ErrorKind;
@@ -1426,59 +1454,71 @@ mod tests {
     }
 
     #[test]
-    fn doctype_decl() {
+    fn prolog() {
+        let doctype_decl = XmlDocTypeDecl {
+            name: "note",
+            external_id: None,
+            int_subset: Some(vec![
+                XmlMarkupDecl::Space("\n                                    "),
+                XmlMarkupDecl::ElementDecl(XmlElementDecl {
+                    name: XmlDeclName::Name("note"),
+                    content: XmlContentSpec::Children(XmlChildren::Seq {
+                        cps: vec![
+                            XmlCP::Name(XmlDeclName::Name("to")),
+                            XmlCP::Name(XmlDeclName::Name("from")),
+                            XmlCP::Name(XmlDeclName::Name("heading")),
+                            XmlCP::Name(XmlDeclName::Name("body")),
+                        ],
+                        repeat: None,
+                    }),
+                }),
+                XmlMarkupDecl::Space("\n                                    "),
+                XmlMarkupDecl::ElementDecl(XmlElementDecl {
+                    name: XmlDeclName::Name("to"),
+                    content: XmlContentSpec::Mixed(XmlMixed(None)),
+                }),
+                XmlMarkupDecl::Space("\n                                    "),
+                XmlMarkupDecl::ElementDecl(XmlElementDecl {
+                    name: XmlDeclName::Name("from"),
+                    content: XmlContentSpec::Mixed(XmlMixed(None)),
+                }),
+                XmlMarkupDecl::Space("\n                                    "),
+                XmlMarkupDecl::ElementDecl(XmlElementDecl {
+                    name: XmlDeclName::Name("heading"),
+                    content: XmlContentSpec::Mixed(XmlMixed(None)),
+                }),
+                XmlMarkupDecl::Space("\n                                    "),
+                XmlMarkupDecl::ElementDecl(XmlElementDecl {
+                    name: XmlDeclName::Name("body"),
+                    content: XmlContentSpec::Mixed(XmlMixed(None)),
+                }),
+                XmlMarkupDecl::Space("\n                "),
+            ]),
+        };
+
         assert_eq!(
-            xml_doctype_decl(
-                r#"<!DOCTYPE note [
+            xml_prolog(
+                r#"<?xml version="1.1"?>
+                <!DOCTYPE note [
                                     <!ELEMENT note (to,from,heading,body)>
                                     <!ELEMENT to (#PCDATA)>
                                     <!ELEMENT from (#PCDATA)>
                                     <!ELEMENT heading (#PCDATA)>
                                     <!ELEMENT body (#PCDATA)>
                 ]>
-                "#
+                <greeting>Hello, world!</greeting>"#
             ),
             Ok((
-                "\n                ",
-                XmlDocTypeDecl {
-                    name: "note",
-                    external_id: None,
-                    int_subset: Some(vec![
-                        XmlMarkupDecl::Space("\n                                    "),
-                        XmlMarkupDecl::ElementDecl(XmlElementDecl {
-                            name: XmlDeclName::Name("note"),
-                            content: XmlContentSpec::Children(XmlChildren::Seq {
-                                cps: vec![
-                                    XmlCP::Name(XmlDeclName::Name("to")),
-                                    XmlCP::Name(XmlDeclName::Name("from")),
-                                    XmlCP::Name(XmlDeclName::Name("heading")),
-                                    XmlCP::Name(XmlDeclName::Name("body"))
-                                ],
-                                repeat: None
-                            })
-                        }),
-                        XmlMarkupDecl::Space("\n                                    "),
-                        XmlMarkupDecl::ElementDecl(XmlElementDecl {
-                            name: XmlDeclName::Name("to"),
-                            content: XmlContentSpec::Mixed(XmlMixed(None))
-                        }),
-                        XmlMarkupDecl::Space("\n                                    "),
-                        XmlMarkupDecl::ElementDecl(XmlElementDecl {
-                            name: XmlDeclName::Name("from"),
-                            content: XmlContentSpec::Mixed(XmlMixed(None))
-                        }),
-                        XmlMarkupDecl::Space("\n                                    "),
-                        XmlMarkupDecl::ElementDecl(XmlElementDecl {
-                            name: XmlDeclName::Name("heading"),
-                            content: XmlContentSpec::Mixed(XmlMixed(None))
-                        }),
-                        XmlMarkupDecl::Space("\n                                    "),
-                        XmlMarkupDecl::ElementDecl(XmlElementDecl {
-                            name: XmlDeclName::Name("body"),
-                            content: XmlContentSpec::Mixed(XmlMixed(None))
-                        }),
-                        XmlMarkupDecl::Space("\n                "),
-                    ])
+                "<greeting>Hello, world!</greeting>",
+                XmlProlog {
+                    decl: XmlDecl {
+                        version: XmlVersion::Version1_1,
+                        encoding: None,
+                        standalone: None
+                    },
+                    misc_one: vec![XmlMisc::Space("\n                ")],
+                    doctype_decl: Some(doctype_decl),
+                    misc_two: Some(vec![XmlMisc::Space("\n                ")])
                 }
             ))
         );

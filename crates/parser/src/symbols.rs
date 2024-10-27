@@ -462,3 +462,16 @@ pub enum XmlMarkupDecl<'a> {
     PEReference(&'a str),
     Space(&'a str),
 }
+
+/// A token represents xml/1.1 `prolog`.
+///
+/// See [`XML_EBNF1.1`] for more information.
+///
+/// [`XML_EBNF1.1`]: https://www.liquid-technologies.com/Reference/Glossary/XML_EBNF1.1.html
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct XmlProlog<'a> {
+    pub decl: XmlDecl<'a>,
+    pub misc_one: Vec<XmlMisc<'a>>,
+    pub doctype_decl: Option<XmlDocTypeDecl<'a>>,
+    pub misc_two: Option<Vec<XmlMisc<'a>>>,
+}
