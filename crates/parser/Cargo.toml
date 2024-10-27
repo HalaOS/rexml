@@ -9,7 +9,6 @@ edition.workspace = true
 
 [dependencies]
 no-std-compat = { workspace = true }
-nom = { workspace = true }
 thiserror = { workspace = true }
 rexml-encoding = { workspace = true }
 futures = { workspace = true }

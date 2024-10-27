@@ -10,8 +10,4 @@ use std::prelude::v1::*;
 mod errors;
 pub use errors::*;
 
-mod sax;
-pub use sax::*;
-
-pub mod ebnf;
-pub mod symbols;
+pub mod input;
