@@ -1,8 +1,8 @@
 [package]
-description = "A xml document parser with sax backend."
-documentation = "https://docs.rs/rexml-parser"
+description = "Streaming API for XML(StAX)"
+documentation = "https://docs.rs/rexml-stax"
 license = "MIT"
-name = "rexml-parser"
+name = "rexml-stax"
 repository = "https://github.com/HalaOS/rexml.git"
 version.workspace = true
 edition.workspace = true
@@ -12,6 +12,7 @@ no-std-compat = { workspace = true }
 thiserror = { workspace = true }
 rexml-encoding = { workspace = true }
 futures = { workspace = true }
+ringbuf-rs = { workspace = true }
 
 [dev-dependencies]
 divan = { workspace = true }

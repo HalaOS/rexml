@@ -16,6 +16,7 @@ serde = { version = "^1.0", features = ["derive"] }
 no-std-compat = { version = "^0.4", features = ["alloc"] }
 nom = "^7.1"
 divan = "0.1.14"
+ringbuf-rs = "^0.2"
 #rexml
 rexml-encoding = { path = "./crates/encoding", version = "^0.1" }
 rexml-dom = { path = "./crates/dom", version = "^0.1" }
