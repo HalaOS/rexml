@@ -10,4 +10,4 @@ use std::prelude::v1::*;
 mod errors;
 pub use errors::*;
 
-pub mod reader;
+pub mod parser;
