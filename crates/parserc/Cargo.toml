@@ -1,0 +1,17 @@
+[package]
+description = "Asynchronous-compatible parser combinator library for rust language."
+documentation = "https://docs.rs/parserc"
+license = "MIT"
+name = "parserc"
+repository = "https://github.com/HalaOS/rexml.git"
+version.workspace = true
+edition.workspace = true
+readme = "README.md"
+
+[dependencies]
+futures = { workspace = true }
+
+[dev-dependencies]
+futures-test = { workspace = true }
+quickcheck = { workspace = true }
+quickcheck_macros = { workspace = true }
