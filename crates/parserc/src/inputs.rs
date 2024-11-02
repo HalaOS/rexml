@@ -174,6 +174,17 @@ pub trait IntoInputStream {
     fn into_input_stream(self) -> Self::InputStream;
 }
 
+impl<T> IntoInputStream for T
+where
+    T: InputStream,
+{
+    type InputStream = Self;
+
+    fn into_input_stream(self) -> Self::InputStream {
+        self
+    }
+}
+
 /// A [`InputStream`] wrapper for `&str` instance.
 pub struct InputStreamStr<'a> {
     input: &'a str,
@@ -435,11 +446,13 @@ mod tests {
 
     use super::{InputStream, IntoInputStream};
 
-    async fn test_input_stream<I, F>(mut input: I, f: F)
+    async fn test_input_stream<I, F>(input: I, f: F)
     where
-        I: InputStream,
+        I: IntoInputStream,
         F: Fn(&[u8]),
     {
+        let mut input = input.into_input_stream();
+
         while let Some(_) = input.next().await.unwrap() {
             let len = input.iter().count();
 
@@ -467,14 +480,13 @@ mod tests {
     fn test_str() {
         fn prop(input: Vec<String>) {
             block_on(async move {
-                test_input_stream("hello world".into_input_stream(), |_| {}).await;
+                test_input_stream("hello world", |_| {}).await;
 
                 test_input_stream(
                     [
                         ["hello world", "hello world"],
                         ["hello world1", "hello world2"],
-                    ]
-                    .into_input_stream(),
+                    ],
                     |_| {},
                 )
                 .await;
@@ -486,8 +498,7 @@ mod tests {
                         .iter()
                         .map(|v| v.as_str())
                         .filter(|v| v.len() > 0)
-                        .collect::<Vec<_>>()
-                        .into_input_stream(),
+                        .collect::<Vec<_>>(),
                     |_| {},
                 )
                 .await;
@@ -502,8 +513,7 @@ mod tests {
                     input
                         .into_iter()
                         .filter(|v| v.len() > 0)
-                        .collect::<Vec<_>>()
-                        .into_input_stream(),
+                        .collect::<Vec<_>>(),
                     |_| {},
                 )
                 .await;
