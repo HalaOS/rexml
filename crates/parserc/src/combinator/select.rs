@@ -7,9 +7,12 @@ pub trait Choice<I>
 where
     I: IntoInputStream,
 {
+    /// Error type returns by this trait.
     type Error;
 
+    /// Return type when calling [`parse`](Choice::parse) function succeeds
     type Output;
+
     /// A parser takes in input type, and returns a Result containing the output value, or an error
     fn parse(
         &mut self,

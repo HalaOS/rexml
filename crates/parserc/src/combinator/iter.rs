@@ -5,10 +5,7 @@ use crate::{
     Parser,
 };
 
-/// Result type returns by [`next`](Generator::next) function.
-pub type NextResult<I, O, E> = std::result::Result<Option<O>, (I, E)>;
-
-/// A trait returns by `iter` combinator.
+/// A trait returns by [`iter`] combinator.
 pub trait Generator<I>: IntoInputStream<Stream = I> {
     /// Error type of this generator.
     type Error;
@@ -60,7 +57,7 @@ where
     }
 }
 
-/// A combinator that loop call `parser` until returns error.
+/// A combinator that loop over [`parser`](Parser) until the [`parser`](Parser) returns error.
 pub fn iter<P, I, O, E>(parser: P, input: I) -> impl Generator<I::Stream, Output = O, Error = E>
 where
     P: Parser<I::Stream, Output = O, Error = E>,

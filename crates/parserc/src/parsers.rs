@@ -12,8 +12,10 @@ pub trait Parser<I>
 where
     I: IntoInputStream,
 {
+    /// Error type returns by [`parse`](Parser::parse) function.
     type Error;
 
+    /// Parser generation target.
     type Output;
 
     /// A parser takes in input type, and returns a Result containing the output value, or an error
