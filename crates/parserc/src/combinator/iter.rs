@@ -103,6 +103,7 @@ mod tests {
 
         // call many times.
         let mut gen = iter(mock1, "hello world");
+
         assert_eq!(gen.next().await, Some(1));
         assert_eq!(gen.next().await, Some(1));
         assert_eq!(gen.next().await, Some(1));
@@ -131,19 +132,19 @@ mod tests {
 
             let mut gen = iter(mock1, input);
 
-            ctx.update(gen.next().await.unwrap()).await;
-            ctx.update(gen.next().await.unwrap()).await;
-            ctx.update(gen.next().await.unwrap()).await;
+            for _ in 0..ctx.0 {
+                ctx.update(gen.next().await.unwrap()).await;
+            }
 
             Ok(((ctx, gen.into_input_stream()), ()))
         }
 
-        let ((ctx, input), op) = opt(ctx_parser).parse((Ctx(0), "hello")).await.unwrap();
+        let ((ctx, input), op) = opt(ctx_parser).parse((Ctx(3), "hello")).await.unwrap();
 
         assert!(op.is_some());
 
         assert_eq!(input, "hello");
 
-        assert_eq!(ctx.0, 3);
+        assert_eq!(ctx.0, 6);
     }
 }
