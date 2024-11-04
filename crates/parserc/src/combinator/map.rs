@@ -17,7 +17,7 @@ where
     fn parse(
         &mut self,
         input: I,
-    ) -> impl std::future::Future<Output = crate::ParseResult<I::Stream, Self::Output, Self::Error>>
+    ) -> impl std::future::Future<Output = crate::Result<I::Stream, Self::Output, Self::Error>>
     {
         async move {
             self.parser

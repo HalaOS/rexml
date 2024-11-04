@@ -1,6 +1,6 @@
 use std::future::Future;
 
-use crate::{inputs::IntoInputStream, ParseResult, Parser};
+use crate::{inputs::IntoInputStream, Parser, Result};
 
 /// A trait that the [`alt`] function argument must implement.
 pub trait Choice<I>
@@ -14,7 +14,7 @@ where
     fn parse(
         &mut self,
         input: I,
-    ) -> impl Future<Output = ParseResult<I::Stream, Self::Output, Self::Error>>;
+    ) -> impl Future<Output = Result<I::Stream, Self::Output, Self::Error>>;
 }
 
 struct ChoiceParser<C>(C);
@@ -30,7 +30,7 @@ where
     fn parse(
         &mut self,
         input: I,
-    ) -> impl Future<Output = ParseResult<I::Stream, Self::Output, Self::Error>> {
+    ) -> impl Future<Output = Result<I::Stream, Self::Output, Self::Error>> {
         self.0.parse(input)
     }
 }
@@ -62,7 +62,7 @@ macro_rules! choice_trait_impl {
             type Error = E;
             type Output = O;
 
-            fn parse(&mut self, input: I) -> impl Future<Output = ParseResult<I::Stream,O, E>>
+            fn parse(&mut self, input: I) -> impl Future<Output = Result<I::Stream,O, E>>
             {
                 async move {
                     #[allow(non_snake_case)]
@@ -100,21 +100,21 @@ mod tests {
 
     use super::*;
 
-    async fn mock0<I>(input: I) -> ParseResult<I, usize, ()>
+    async fn mock0<I>(input: I) -> Result<I, usize, ()>
     where
         I: IntoInputStream,
     {
         Err((input, ()))
     }
 
-    async fn mock1<I>(input: I) -> ParseResult<I, usize, ()>
+    async fn mock1<I>(input: I) -> Result<I, usize, ()>
     where
         I: IntoInputStream,
     {
         Ok((input, 1))
     }
 
-    async fn mock2<I>(input: I) -> ParseResult<I, usize, ()>
+    async fn mock2<I>(input: I) -> Result<I, usize, ()>
     where
         I: IntoInputStream,
     {

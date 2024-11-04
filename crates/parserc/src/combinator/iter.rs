@@ -75,11 +75,11 @@ where
 #[cfg(test)]
 mod tests {
 
-    use crate::{combinator::opt, ParseResult};
+    use crate::{combinator::opt, Result};
 
     use super::*;
 
-    async fn mock0<I>(input: I) -> ParseResult<I::Stream, usize, ()>
+    async fn mock0<I>(input: I) -> Result<I::Stream, usize, ()>
     where
         I: IntoInputStream,
     {
@@ -88,7 +88,7 @@ mod tests {
         Err((input, ()))
     }
 
-    async fn mock1<I>(input: I) -> ParseResult<I::Stream, usize, ()>
+    async fn mock1<I>(input: I) -> Result<I::Stream, usize, ()>
     where
         I: IntoInputStream,
     {
@@ -124,7 +124,7 @@ mod tests {
             }
         }
 
-        async fn ctx_parser<I>(input: (Ctx, I)) -> ParseResult<(Ctx, I), (), ()>
+        async fn ctx_parser<I>(input: (Ctx, I)) -> Result<(Ctx, I), (), ()>
         where
             I: InputStream,
         {
