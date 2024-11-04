@@ -2,7 +2,10 @@
 
 /// A parser input stream must implement this trait.
 pub trait InputStream {
+    /// The sequence item type of input stream.
     type Item;
+
+    /// Slice type of input stream.
     type Slice<'a>
     where
         Self: 'a;
@@ -12,7 +15,11 @@ pub trait InputStream {
 
 impl InputStream for &str {
     type Item = char;
-    type Slice<'a> = &'a str where Self: 'a;
+
+    type Slice<'a>
+        = &'a str
+    where
+        Self: 'a;
 
     fn slice(&self) -> Self::Slice<'_> {
         self
@@ -43,7 +50,10 @@ where
 {
     type Item = I::Item;
 
-    type Slice<'a> = I::Slice<'a> where Self: 'a;
+    type Slice<'a>
+        = I::Slice<'a>
+    where
+        Self: 'a;
 
     fn slice(&self) -> Self::Slice<'_> {
         self.1.slice()

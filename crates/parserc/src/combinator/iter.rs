@@ -83,17 +83,10 @@ mod tests {
     where
         I: IntoInputStream,
     {
-        let input = input.into_input_stream();
-
-        Err((input, ()))
+        Err((input.into_input_stream(), ()))
     }
 
-    async fn mock1<I>(input: I) -> Result<I::Stream, usize, ()>
-    where
-        I: IntoInputStream,
-    {
-        let input = input.into_input_stream();
-
+    async fn mock1(input: &str) -> Result<&str, usize, ()> {
         Ok((input, 1))
     }
 
@@ -124,10 +117,7 @@ mod tests {
             }
         }
 
-        async fn ctx_parser<I>(input: (Ctx, I)) -> Result<(Ctx, I), (), ()>
-        where
-            I: InputStream,
-        {
+        async fn ctx_parser(input: (Ctx, &str)) -> Result<(Ctx, &str), (), ()> {
             let (mut ctx, input) = input;
 
             let mut gen = iter(mock1, input);
