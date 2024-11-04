@@ -1,6 +1,6 @@
 use std::future::Future;
 
-use crate::{inputs::InputStream, Parser, Result};
+use crate::{inputs::InputStream, Parser, ParserResult};
 
 /// A trait that the [`alt`] function argument must implement.
 pub trait Choice<I>
@@ -11,7 +11,10 @@ where
 
     type Output;
     /// A parser takes in input type, and returns a Result containing the output value, or an error
-    fn parse(&self, input: I) -> impl Future<Output = Result<I, Self::Output, Self::Error>>;
+    fn parse(
+        &mut self,
+        input: I,
+    ) -> impl Future<Output = ParserResult<I, Self::Output, Self::Error>>;
 }
 
 struct ChoiceParser<C>(C);
@@ -24,13 +27,16 @@ where
     type Error = C::Error;
     type Output = C::Output;
 
-    fn parse(&self, input: I) -> impl Future<Output = Result<I, Self::Output, Self::Error>> {
+    fn parse(
+        &mut self,
+        input: I,
+    ) -> impl Future<Output = ParserResult<I, Self::Output, Self::Error>> {
         self.0.parse(input)
     }
 }
 
-/// Create a [`Parser`] from [`Choice`] combinator.
-pub fn alt<I, C>(choice: C) -> impl Parser<I, Output = C::Output, Error = C::Error>
+/// Tests a list of parsers one by one until one succeeds.
+pub fn select<I, C>(choice: C) -> impl Parser<I, Output = C::Output, Error = C::Error>
 where
     C: Choice<I>,
     I: InputStream,
@@ -56,7 +62,7 @@ macro_rules! choice_trait_impl {
             type Error = E;
             type Output = O;
 
-            fn parse(&self, input: I) -> impl Future<Output = Result<I,O, E>>
+            fn parse(&mut self, input: I) -> impl Future<Output = ParserResult<I,O, E>>
             {
                 async move {
                     #[allow(non_snake_case)]
@@ -90,25 +96,25 @@ choice_trait!(
 
 #[cfg(test)]
 mod tests {
-    use crate::Parser;
+    use crate::{combinator::map, Parser};
 
     use super::*;
 
-    async fn mock0<I>(input: I) -> Result<I, usize, ()>
+    async fn mock0<I>(input: I) -> ParserResult<I, usize, ()>
     where
         I: InputStream,
     {
         Err((input, ()))
     }
 
-    async fn mock1<I>(input: I) -> Result<I, usize, ()>
+    async fn mock1<I>(input: I) -> ParserResult<I, usize, ()>
     where
         I: InputStream,
     {
         Ok((input, 1))
     }
 
-    async fn mock2<I>(input: I) -> Result<I, usize, ()>
+    async fn mock2<I>(input: I) -> ParserResult<I, usize, ()>
     where
         I: InputStream,
     {
@@ -118,7 +124,7 @@ mod tests {
     #[futures_test::test]
     async fn test_opt() {
         assert_eq!(
-            alt((mock0, mock1, mock0, mock2))
+            select((mock0, mock1, mock0, mock2))
                 .parse("Hello")
                 .await
                 .unwrap(),
@@ -126,11 +132,11 @@ mod tests {
         );
 
         assert_eq!(
-            alt((mock0, mock2, mock0, mock1))
+            select((mock0, map((mock2, mock1), |(a, b)| a + b), mock0, mock1))
                 .parse("Hello")
                 .await
                 .unwrap(),
-            ("Hello", 2)
+            ("Hello", 3)
         );
     }
 }

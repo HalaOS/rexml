@@ -3,8 +3,11 @@
 mod opt;
 pub use opt::*;
 
-mod alt;
-pub use alt::*;
+mod select;
+pub use select::*;
 
-mod tuple;
-pub use tuple::*;
+mod map;
+pub use map::*;
+
+mod take;
+pub use take::*;

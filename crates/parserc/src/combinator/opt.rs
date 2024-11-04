@@ -1,6 +1,6 @@
 use std::future::Future;
 
-use crate::{inputs::InputStream, Parser, Result};
+use crate::{inputs::InputStream, Parser, ParserResult};
 
 /// Optional parser, will return None on inner parse returns Error.
 struct Opt<P>(P);
@@ -14,7 +14,7 @@ where
 
     type Output = Option<O>;
 
-    fn parse(&self, input: I) -> impl Future<Output = Result<I, Self::Output, Self::Error>> {
+    fn parse(&mut self, input: I) -> impl Future<Output = ParserResult<I, Self::Output, Self::Error>> {
         async move {
             match self.0.parse(input).await {
                 Ok((input, i)) => Ok((input, Some(i))),
@@ -39,7 +39,7 @@ mod tests {
 
     use super::*;
 
-    async fn mock<I>(input: I) -> Result<I, (), ()>
+    async fn mock<I>(input: I) -> ParserResult<I, (), ()>
     where
         I: InputStream,
     {
@@ -48,7 +48,7 @@ mod tests {
         Ok((input, ()))
     }
 
-    async fn mock2<I>(input: I) -> Result<I, (), ()>
+    async fn mock2<I>(input: I) -> ParserResult<I, (), ()>
     where
         I: InputStream,
     {
