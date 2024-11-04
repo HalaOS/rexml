@@ -3,5 +3,7 @@
 mod parsers;
 pub use parsers::*;
 
+mod inputs;
+pub use inputs::*;
+
 pub mod combinator;
-pub mod inputs;

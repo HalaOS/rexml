@@ -2,7 +2,7 @@ use std::future::Future;
 
 use crate::{inputs::IntoInputStream, Parser, Result};
 
-/// A trait that the [`alt`] function argument must implement.
+/// A trait that used by [`select`] combinator.
 pub trait Choice<I>
 where
     I: IntoInputStream,
