@@ -18,3 +18,21 @@ impl InputStream for &str {
         self
     }
 }
+
+/// A extension trait that convert `self` into [`InputStream`].
+pub trait IntoInputStream {
+    type Stream: InputStream;
+
+    fn into_input_stream(self) -> Self::Stream;
+}
+
+/// Implement [`IntoInputStream`] for all [`InputStream`] types.
+impl<T> IntoInputStream for T
+where
+    T: InputStream,
+{
+    type Stream = T;
+    fn into_input_stream(self) -> Self::Stream {
+        self
+    }
+}

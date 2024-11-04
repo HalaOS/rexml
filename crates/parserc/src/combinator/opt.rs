@@ -1,6 +1,6 @@
 use std::future::Future;
 
-use crate::{inputs::InputStream, Parser, ParserResult};
+use crate::{inputs::IntoInputStream, ParseResult, Parser};
 
 /// Optional parser, will return None on inner parse returns Error.
 struct Opt<P>(P);
@@ -8,13 +8,16 @@ struct Opt<P>(P);
 impl<I, O, E, P> Parser<I> for Opt<P>
 where
     P: Parser<I, Output = O, Error = E>,
-    I: InputStream,
+    I: IntoInputStream,
 {
     type Error = E;
 
     type Output = Option<O>;
 
-    fn parse(&mut self, input: I) -> impl Future<Output = ParserResult<I, Self::Output, Self::Error>> {
+    fn parse(
+        &mut self,
+        input: I,
+    ) -> impl Future<Output = ParseResult<I::Stream, Self::Output, Self::Error>> {
         async move {
             match self.0.parse(input).await {
                 Ok((input, i)) => Ok((input, Some(i))),
@@ -28,7 +31,7 @@ where
 pub fn opt<I, O, E, P>(parser: P) -> impl Parser<I, Output = Option<O>, Error = E>
 where
     P: Parser<I, Output = O, Error = E>,
-    I: InputStream,
+    I: IntoInputStream,
 {
     Opt(parser)
 }
@@ -39,18 +42,18 @@ mod tests {
 
     use super::*;
 
-    async fn mock<I>(input: I) -> ParserResult<I, (), ()>
+    async fn mock<I>(input: I) -> ParseResult<I, (), ()>
     where
-        I: InputStream,
+        I: IntoInputStream,
     {
         let (input, _) = mock2(input).await?;
         let (input, _) = mock2(input).await?;
         Ok((input, ()))
     }
 
-    async fn mock2<I>(input: I) -> ParserResult<I, (), ()>
+    async fn mock2<I>(input: I) -> ParseResult<I, (), ()>
     where
-        I: InputStream,
+        I: IntoInputStream,
     {
         Ok((input, ()))
     }

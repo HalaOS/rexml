@@ -1,11 +1,11 @@
 use std::future::Future;
 
-use crate::{inputs::InputStream, Parser, ParserResult};
+use crate::{inputs::IntoInputStream, ParseResult, Parser};
 
 /// A trait that the [`alt`] function argument must implement.
 pub trait Choice<I>
 where
-    I: InputStream,
+    I: IntoInputStream,
 {
     type Error;
 
@@ -14,7 +14,7 @@ where
     fn parse(
         &mut self,
         input: I,
-    ) -> impl Future<Output = ParserResult<I, Self::Output, Self::Error>>;
+    ) -> impl Future<Output = ParseResult<I::Stream, Self::Output, Self::Error>>;
 }
 
 struct ChoiceParser<C>(C);
@@ -22,7 +22,7 @@ struct ChoiceParser<C>(C);
 impl<I, C> Parser<I> for ChoiceParser<C>
 where
     C: Choice<I>,
-    I: InputStream,
+    I: IntoInputStream,
 {
     type Error = C::Error;
     type Output = C::Output;
@@ -30,7 +30,7 @@ where
     fn parse(
         &mut self,
         input: I,
-    ) -> impl Future<Output = ParserResult<I, Self::Output, Self::Error>> {
+    ) -> impl Future<Output = ParseResult<I::Stream, Self::Output, Self::Error>> {
         self.0.parse(input)
     }
 }
@@ -39,7 +39,7 @@ where
 pub fn select<I, C>(choice: C) -> impl Parser<I, Output = C::Output, Error = C::Error>
 where
     C: Choice<I>,
-    I: InputStream,
+    I: IntoInputStream,
 {
     ChoiceParser(choice)
 }
@@ -56,13 +56,13 @@ macro_rules! choice_trait_impl {
     ($($ty: ident),+) => {
         impl<$($ty),+, I, O, E> Choice<I> for ($($ty),+)
         where
-            I: InputStream + Clone,
+            I: IntoInputStream + Clone,
             $($ty: Parser<I, Output = O, Error = E>),+
         {
             type Error = E;
             type Output = O;
 
-            fn parse(&mut self, input: I) -> impl Future<Output = ParserResult<I,O, E>>
+            fn parse(&mut self, input: I) -> impl Future<Output = ParseResult<I::Stream,O, E>>
             {
                 async move {
                     #[allow(non_snake_case)]
@@ -100,23 +100,23 @@ mod tests {
 
     use super::*;
 
-    async fn mock0<I>(input: I) -> ParserResult<I, usize, ()>
+    async fn mock0<I>(input: I) -> ParseResult<I, usize, ()>
     where
-        I: InputStream,
+        I: IntoInputStream,
     {
         Err((input, ()))
     }
 
-    async fn mock1<I>(input: I) -> ParserResult<I, usize, ()>
+    async fn mock1<I>(input: I) -> ParseResult<I, usize, ()>
     where
-        I: InputStream,
+        I: IntoInputStream,
     {
         Ok((input, 1))
     }
 
-    async fn mock2<I>(input: I) -> ParserResult<I, usize, ()>
+    async fn mock2<I>(input: I) -> ParseResult<I, usize, ()>
     where
-        I: InputStream,
+        I: IntoInputStream,
     {
         Ok((input, 2))
     }

@@ -2,15 +2,18 @@
 
 use std::future::Future;
 
-use crate::inputs::InputStream;
+use crate::inputs::{InputStream, IntoInputStream};
 
 /// Result type returns by [`parse`](Parser::parse) function.
-pub type ParserResult<I, O, E> = std::result::Result<(I, O), (I, E)>;
+pub type ParseResult<I, O, E> = std::result::Result<(I, O), (I, E)>;
+
+/// Result type returns by parse function with context data.
+pub type ContextResult<Data, I, O, E> = std::result::Result<(I, Data, O), (I, Data, E)>;
 
 /// All parserc parsers implement this trait
 pub trait Parser<I>
 where
-    I: InputStream,
+    I: IntoInputStream,
 {
     type Error;
 
@@ -20,14 +23,14 @@ where
     fn parse(
         &mut self,
         input: I,
-    ) -> impl Future<Output = ParserResult<I, Self::Output, Self::Error>>;
+    ) -> impl Future<Output = ParseResult<I::Stream, Self::Output, Self::Error>>;
 }
 
 impl<I, O, E, F, Fut> Parser<I> for F
 where
-    I: InputStream,
+    I: IntoInputStream,
     F: FnMut(I) -> Fut,
-    Fut: Future<Output = ParserResult<I, O, E>>,
+    Fut: Future<Output = ParseResult<I::Stream, O, E>>,
 {
     type Error = E;
     type Output = O;
@@ -35,7 +38,7 @@ where
     fn parse(
         &mut self,
         input: I,
-    ) -> impl Future<Output = ParserResult<I, Self::Output, Self::Error>> {
+    ) -> impl Future<Output = ParseResult<I::Stream, Self::Output, Self::Error>> {
         self(input)
     }
 }
@@ -52,7 +55,7 @@ macro_rules! tuple_parser {
             type Error = E;
             type Output = ($header_o, $($tail_o),+);
 
-            fn parse(&mut self, input: I) -> impl Future<Output = ParserResult<I, Self::Output, Self::Error>> {
+            fn parse(&mut self, input: I) -> impl Future<Output = ParseResult<I, Self::Output, Self::Error>> {
                 #[allow(non_snake_case)]
                 async move {
 
@@ -81,21 +84,21 @@ tuple_parser!(
 #[cfg(test)]
 mod tests {
     use super::*;
-    async fn mock0<I>(input: I) -> ParserResult<I, usize, ()>
+    async fn mock0<I>(input: I) -> ParseResult<I, usize, ()>
     where
         I: InputStream,
     {
         Ok((input, 0))
     }
 
-    async fn mock1<I>(input: I) -> ParserResult<I, usize, ()>
+    async fn mock1<I>(input: I) -> ParseResult<I, usize, ()>
     where
         I: InputStream,
     {
         Ok((input, 1))
     }
 
-    async fn mock2<I>(input: I) -> ParserResult<I, usize, ()>
+    async fn mock2<I>(input: I) -> ParseResult<I, usize, ()>
     where
         I: InputStream,
     {

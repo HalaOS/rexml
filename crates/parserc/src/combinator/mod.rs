@@ -9,5 +9,5 @@ pub use select::*;
 mod map;
 pub use map::*;
 
-mod take;
-pub use take::*;
+mod iter;
+pub use iter::*;

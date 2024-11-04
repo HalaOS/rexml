@@ -1,4 +1,4 @@
-use crate::{inputs::InputStream, Parser};
+use crate::{inputs::IntoInputStream, Parser};
 
 struct Map<P, F> {
     parser: P,
@@ -8,7 +8,7 @@ struct Map<P, F> {
 impl<I, O1, O2, E, P, F> Parser<I> for Map<P, F>
 where
     P: Parser<I, Output = O1, Error = E>,
-    I: InputStream,
+    I: IntoInputStream,
     F: Fn(O1) -> O2,
 {
     type Error = E;
@@ -17,7 +17,8 @@ where
     fn parse(
         &mut self,
         input: I,
-    ) -> impl std::future::Future<Output = crate::ParserResult<I, Self::Output, Self::Error>> {
+    ) -> impl std::future::Future<Output = crate::ParseResult<I::Stream, Self::Output, Self::Error>>
+    {
         async move {
             self.parser
                 .parse(input)
@@ -30,7 +31,7 @@ where
 /// Maps a function on the result of a parser.
 pub fn map<I, O1, O2, E, P, F>(parser: P, map_f: F) -> impl Parser<I, Output = O2, Error = E>
 where
-    I: InputStream,
+    I: IntoInputStream,
     P: Parser<I, Output = O1, Error = E>,
     F: Fn(O1) -> O2,
 {
