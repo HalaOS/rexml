@@ -75,7 +75,7 @@ where
 #[cfg(test)]
 mod tests {
 
-    use crate::ParseResult;
+    use crate::{combinator::opt, ParseResult};
 
     use super::*;
 
@@ -110,5 +110,40 @@ mod tests {
         // generator as InputStream
 
         assert_eq!(mock0(gen).await, Err(("hello world", ())));
+    }
+
+    #[futures_test::test]
+    async fn test_ctx() {
+        #[derive(Debug)]
+        struct Ctx(usize);
+
+        impl Ctx {
+            pub async fn update(&mut self, v: usize) {
+                self.0 += v;
+            }
+        }
+
+        async fn ctx_parser<I>(input: (Ctx, I)) -> ParseResult<(Ctx, I), (), ()>
+        where
+            I: InputStream,
+        {
+            let (mut ctx, input) = input;
+
+            let mut gen = iter(mock1, input);
+
+            ctx.update(gen.next().await.unwrap()).await;
+            ctx.update(gen.next().await.unwrap()).await;
+            ctx.update(gen.next().await.unwrap()).await;
+
+            Ok(((ctx, gen.into_input_stream()), ()))
+        }
+
+        let ((ctx, input), op) = opt(ctx_parser).parse((Ctx(0), "hello")).await.unwrap();
+
+        assert!(op.is_some());
+
+        assert_eq!(input, "hello");
+
+        assert_eq!(ctx.0, 3);
     }
 }

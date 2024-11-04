@@ -36,3 +36,16 @@ where
         self
     }
 }
+
+impl<C, I> InputStream for (C, I)
+where
+    I: InputStream,
+{
+    type Item = I::Item;
+
+    type Slice<'a> = I::Slice<'a> where Self: 'a;
+
+    fn slice(&self) -> Self::Slice<'_> {
+        self.1.slice()
+    }
+}
