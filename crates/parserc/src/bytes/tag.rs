@@ -1,10 +1,10 @@
-use crate::{Error, InputStream, IntoInputStream, Lookahead, Parser, ParserKind};
+use crate::{Error, InputStream, Lookahead, Parser, ParserKind};
 
 struct Tag<T>(T);
 
 impl<T, I> Parser<I> for Tag<T>
 where
-    I: IntoInputStream,
+    I: InputStream,
     T: AsRef<[u8]>,
 {
     type Error = Error;
@@ -12,11 +12,8 @@ where
 
     fn parse(
         &mut self,
-        input: I,
-    ) -> impl std::future::Future<
-        Output = crate::Result<<I as crate::IntoInputStream>::Stream, Self::Output, Self::Error>,
-    > {
-        let mut input = input.into_input_stream();
+        mut input: I,
+    ) -> impl std::future::Future<Output = crate::Result<I, Self::Output, Self::Error>> {
         async move {
             loop {
                 if input.len() < self.0.as_ref().len() {

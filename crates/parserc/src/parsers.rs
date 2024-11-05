@@ -2,7 +2,7 @@
 
 use std::future::Future;
 
-use crate::inputs::{InputStream, IntoInputStream};
+use crate::inputs::InputStream;
 
 /// Result type returns by [`parse`](Parser::parse) function.
 pub type Result<I, O, E> = std::result::Result<(I, O), (I, E)>;
@@ -10,7 +10,7 @@ pub type Result<I, O, E> = std::result::Result<(I, O), (I, E)>;
 /// All parserc parsers implement this trait
 pub trait Parser<I>
 where
-    I: IntoInputStream,
+    I: InputStream,
 {
     /// Error type returns by [`parse`](Parser::parse) function.
     type Error;
@@ -19,25 +19,19 @@ where
     type Output;
 
     /// A parser takes in input type, and returns a Result containing the output value, or an error
-    fn parse(
-        &mut self,
-        input: I,
-    ) -> impl Future<Output = Result<I::Stream, Self::Output, Self::Error>>;
+    fn parse(&mut self, input: I) -> impl Future<Output = Result<I, Self::Output, Self::Error>>;
 }
 
 impl<I, O, E, F, Fut> Parser<I> for F
 where
-    I: IntoInputStream,
+    I: InputStream,
     F: FnMut(I) -> Fut,
-    Fut: Future<Output = Result<I::Stream, O, E>>,
+    Fut: Future<Output = Result<I, O, E>>,
 {
     type Error = E;
     type Output = O;
 
-    fn parse(
-        &mut self,
-        input: I,
-    ) -> impl Future<Output = Result<I::Stream, Self::Output, Self::Error>> {
+    fn parse(&mut self, input: I) -> impl Future<Output = Result<I, Self::Output, Self::Error>> {
         self(input)
     }
 }

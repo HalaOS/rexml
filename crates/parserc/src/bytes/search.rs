@@ -1,16 +1,16 @@
 use std::usize;
 
-use crate::{Error, InputStream, IntoInputStream, Lookahead, Parser, ParserKind};
+use crate::{Error, InputStream, Lookahead, Parser, ParserKind};
 
 /// Search along the input stream until cond returns false.
 pub fn search<I, F>(cond: F) -> impl Parser<I, Output = usize, Error = Error>
 where
-    I: IntoInputStream,
+    I: InputStream,
     F: Fn(usize, u8) -> bool + Clone,
 {
-    move |input: I| {
+    move |mut input: I| {
         let cond = cond.clone();
-        let mut input = input.into_input_stream();
+
         async move {
             let mut offset = 0usize;
             loop {

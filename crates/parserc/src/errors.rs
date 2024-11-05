@@ -18,9 +18,12 @@ pub enum ParserKind {
     #[error("one_of(chars)")]
     OneOf,
 
-    #[error("Tag(bytes)")]
+    #[error("tag(bytes)")]
     Tag,
 
-    #[error("Search(bytes)")]
+    #[error("search(bytes)")]
     Search,
+
+    #[error("iter(combinator)")]
+    Iter,
 }

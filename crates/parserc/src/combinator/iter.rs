@@ -1,12 +1,9 @@
 use std::future::Future;
 
-use crate::{
-    inputs::{InputStream, IntoInputStream},
-    Parser,
-};
+use crate::{inputs::InputStream, Parser, ParserKind};
 
 /// A trait returns by [`iter`] combinator.
-pub trait Generator<I>: IntoInputStream<Stream = I> {
+pub trait Generator<I> {
     /// Error type of this generator.
     type Error;
 
@@ -15,6 +12,9 @@ pub trait Generator<I>: IntoInputStream<Stream = I> {
 
     /// Parse next `Output`.
     fn next(&mut self) -> impl Future<Output = Option<Self::Output>>;
+
+    /// Convert generator into stream.
+    fn into_stream(self) -> I;
 }
 
 struct ParseIter<P, I> {
@@ -30,12 +30,22 @@ where
     type Error = E;
     type Output = O;
 
+    fn into_stream(mut self) -> I {
+        self.input.take().unwrap()
+    }
     fn next(&mut self) -> impl Future<Output = Option<Self::Output>> {
         let input = self.input.take().unwrap();
 
         async move {
+            let position = input.position();
+
             match self.parser.parse(input).await {
                 Ok((i, o)) => {
+                    // infinite loop check: the parser must always consume
+                    if position == i.position() {
+                        panic!("{}, infinite loop detected!!", ParserKind::Iter);
+                    }
+
                     self.input = Some(i);
                     Some(o)
                 }
@@ -45,27 +55,15 @@ where
     }
 }
 
-impl<P, I, O, E> IntoInputStream for ParseIter<P, I>
+/// A combinator that loop over [`parser`](Parser) until the [`parser`](Parser) returns error.
+pub fn iter<P, I, O, E>(parser: P, input: I) -> impl Generator<I, Output = O, Error = E>
 where
     P: Parser<I, Output = O, Error = E>,
     I: InputStream,
 {
-    type Stream = I;
-
-    fn into_input_stream(mut self) -> Self::Stream {
-        self.input.take().unwrap()
-    }
-}
-
-/// A combinator that loop over [`parser`](Parser) until the [`parser`](Parser) returns error.
-pub fn iter<P, I, O, E>(parser: P, input: I) -> impl Generator<I::Stream, Output = O, Error = E>
-where
-    P: Parser<I::Stream, Output = O, Error = E>,
-    I: IntoInputStream,
-{
     ParseIter {
         parser,
-        input: Some(input.into_input_stream()),
+        input: Some(input),
     }
 }
 
@@ -76,14 +74,15 @@ mod tests {
 
     use super::*;
 
-    async fn mock0<I>(input: I) -> Result<I::Stream, usize, ()>
+    async fn mock0<I>(input: I) -> Result<I, usize, ()>
     where
-        I: IntoInputStream,
+        I: InputStream,
     {
-        Err((input.into_input_stream(), ()))
+        Err((input, ()))
     }
 
     async fn mock1(input: &str) -> Result<&str, usize, ()> {
+        let (_, input) = input.split_at(1);
         Ok((input, 1))
     }
 
@@ -100,7 +99,7 @@ mod tests {
 
         // generator as InputStream
 
-        assert_eq!(mock0(gen).await, Err(("hello world", ())));
+        assert_eq!(mock0(gen.into_stream()).await, Err(("lo world", ())));
     }
 
     #[futures_test::test]
@@ -123,14 +122,14 @@ mod tests {
                 ctx.update(gen.next().await.unwrap()).await;
             }
 
-            Ok(((ctx, gen.into_input_stream()), ()))
+            Ok(((ctx, gen.into_stream()), ()))
         }
 
         let ((ctx, input), op) = opt(ctx_parser).parse((Ctx(3), "hello")).await.unwrap();
 
         assert!(op.is_some());
 
-        assert_eq!(input, "hello");
+        assert_eq!(input, "lo");
 
         assert_eq!(ctx.0, 6);
     }

@@ -14,6 +14,8 @@ pub enum Lookahead {
 
 /// A parser input stream must implement this trait.
 pub trait InputStream {
+    /// Opaque to check stream position.
+    type Cursor: PartialEq;
     /// Returns the lookahead buf length.
     fn len(&self) -> usize;
 
@@ -28,6 +30,9 @@ pub trait InputStream {
     /// The argument, mid, should be a byte offset from the start of the string.
     /// it must also be on the boundary of a UTF-8 code point for some impls.
     fn split_at(self, mid: usize) -> Self;
+
+    /// Returns the current position of this input stream.
+    fn position(&self) -> Self::Cursor;
 }
 
 /// A input stream that data is encoded as utf-8 string.
@@ -37,6 +42,7 @@ pub trait InputStreamUf8 {
 }
 
 impl InputStream for &str {
+    type Cursor = usize;
     fn len(&self) -> usize {
         str::len(&self)
     }
@@ -55,6 +61,10 @@ impl InputStream for &str {
 
         last
     }
+
+    fn position(&self) -> Self::Cursor {
+        str::len(&self)
+    }
 }
 
 impl InputStreamUf8 for &str {
@@ -63,27 +73,12 @@ impl InputStreamUf8 for &str {
     }
 }
 
-/// A extension trait that convert `self` into [`InputStream`].
-pub trait IntoInputStream {
-    type Stream: InputStream;
-    fn into_input_stream(self) -> Self::Stream;
-}
-
-/// Implement [`IntoInputStream`] for all [`InputStream`] types.
-impl<T> IntoInputStream for T
-where
-    T: InputStream,
-{
-    type Stream = T;
-    fn into_input_stream(self) -> Self::Stream {
-        self
-    }
-}
-
 impl<C, I> InputStream for (C, I)
 where
     I: InputStream,
 {
+    type Cursor = I::Cursor;
+
     fn len(&self) -> usize {
         self.1.len()
     }
@@ -99,5 +94,9 @@ where
     fn split_at(self, mid: usize) -> Self {
         let (c, i) = self;
         (c, i.split_at(mid))
+    }
+
+    fn position(&self) -> Self::Cursor {
+        self.1.position()
     }
 }
