@@ -11,3 +11,6 @@ pub use map::*;
 
 mod iter;
 pub use iter::*;
+
+mod seq;
+pub use seq::*;
