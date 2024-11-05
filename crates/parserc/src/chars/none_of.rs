@@ -1,6 +1,4 @@
-use crate::{Error, InputStream, InputStreamUf8, Lookahead, Parser, ParserKind};
-
-use super::FindChar;
+use crate::{utils::FindChar, Error, InputStream, InputStreamUf8, Lookahead, Parser, ParserKind};
 
 /// Recognizes one character and checks that it satisfies a predicate
 pub fn none_of<I, T>(list: T) -> impl Parser<I, Error = Error, Output = char>

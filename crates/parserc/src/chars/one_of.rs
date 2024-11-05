@@ -1,6 +1,4 @@
-use crate::{Error, InputStream, InputStreamUf8, Lookahead, Parser, ParserKind};
-
-use super::FindChar;
+use crate::{utils::FindChar, Error, InputStream, InputStreamUf8, Lookahead, Parser, ParserKind};
 
 /// Recognizes one character and checks that it satisfies a predicate
 pub fn one_of<I, T>(list: T) -> impl Parser<I, Error = Error, Output = char>
@@ -44,8 +42,8 @@ mod tests {
         );
 
         assert_eq!(
-            one_of("abc".to_string()).parse("chello").await,
-            Ok(("hello", 'c'))
+            one_of("1234567890.".to_string()).parse("32.4").await,
+            Ok(("2.4", '3'))
         );
 
         assert_eq!(

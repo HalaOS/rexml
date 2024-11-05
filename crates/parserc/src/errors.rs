@@ -17,4 +17,10 @@ pub enum ParserKind {
 
     #[error("one_of(chars)")]
     OneOf,
+
+    #[error("Tag(bytes)")]
+    Tag,
+
+    #[error("Search(bytes)")]
+    Search,
 }

@@ -8,6 +8,3 @@ pub use one_of::*;
 
 mod none_of;
 pub use none_of::*;
-
-mod find;
-pub use find::*;
