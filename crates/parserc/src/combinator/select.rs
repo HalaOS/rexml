@@ -3,7 +3,7 @@ use std::future::Future;
 use crate::{inputs::InputStream, Parser, Result};
 
 /// A trait that used by [`select`] combinator.
-pub trait Choice<I>
+pub trait Choice<I>: Send
 where
     I: InputStream,
 {
@@ -14,7 +14,10 @@ where
     type Output;
 
     /// A parser takes in input type, and returns a Result containing the output value, or an error
-    fn parse(&mut self, input: I) -> impl Future<Output = Result<I, Self::Output, Self::Error>>;
+    fn parse(
+        &mut self,
+        input: I,
+    ) -> impl Future<Output = Result<I, Self::Output, Self::Error>> + Send;
 }
 
 struct ChoiceParser<C>(C);
@@ -27,7 +30,10 @@ where
     type Error = C::Error;
     type Output = C::Output;
 
-    fn parse(&mut self, input: I) -> impl Future<Output = Result<I, Self::Output, Self::Error>> {
+    fn parse(
+        &mut self,
+        input: I,
+    ) -> impl Future<Output = Result<I, Self::Output, Self::Error>> + Send {
         self.0.parse(input)
     }
 }
@@ -54,7 +60,8 @@ macro_rules! choice_trait_impl {
         impl<$($ty),+, I, O, E> Choice<I> for ($($ty),+)
         where
             I: InputStream + Clone,
-            $($ty: Parser<I, Output = O, Error = E>),+
+            O: Send,
+            $($ty: Parser<I, Output = O, Error = E> + Send),+
         {
             type Error = E;
             type Output = O;

@@ -6,7 +6,7 @@ use crate::{Error, InputStream, Lookahead, Parser, ParserKind};
 pub fn search<I, F>(cond: F) -> impl Parser<I, Output = usize, Error = Error>
 where
     I: InputStream,
-    F: Fn(usize, u8) -> bool + Clone,
+    F: Fn(usize, u8) -> bool + Clone + Send,
 {
     move |mut input: I| {
         let cond = cond.clone();

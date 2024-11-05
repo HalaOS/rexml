@@ -13,9 +13,9 @@ pub enum Lookahead {
 }
 
 /// A parser input stream must implement this trait.
-pub trait InputStream {
+pub trait InputStream: Send {
     /// Opaque to check stream position.
-    type Cursor: PartialEq;
+    type Cursor: PartialEq + Send;
     /// Returns the lookahead buf length.
     fn len(&self) -> usize;
 
@@ -23,7 +23,7 @@ pub trait InputStream {
     fn slice(&self) -> &[u8];
 
     /// Load new data up to `len` from the upstream.
-    fn lookahead(&mut self, len: usize) -> impl Future<Output = Lookahead>;
+    fn lookahead(&mut self, len: usize) -> impl Future<Output = Lookahead> + Send;
 
     /// Divides lookahead buf into two at an index.
     ///
@@ -76,6 +76,7 @@ impl InputStreamUf8 for &str {
 impl<C, I> InputStream for (C, I)
 where
     I: InputStream,
+    C: Send,
 {
     type Cursor = I::Cursor;
 

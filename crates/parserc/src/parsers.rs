@@ -8,7 +8,7 @@ use crate::inputs::InputStream;
 pub type Result<I, O, E> = std::result::Result<(I, O), (I, E)>;
 
 /// All parserc parsers implement this trait
-pub trait Parser<I>
+pub trait Parser<I>: Send
 where
     I: InputStream,
 {
@@ -19,19 +19,25 @@ where
     type Output;
 
     /// A parser takes in input type, and returns a Result containing the output value, or an error
-    fn parse(&mut self, input: I) -> impl Future<Output = Result<I, Self::Output, Self::Error>>;
+    fn parse(
+        &mut self,
+        input: I,
+    ) -> impl Future<Output = Result<I, Self::Output, Self::Error>> + Send;
 }
 
 impl<I, O, E, F, Fut> Parser<I> for F
 where
     I: InputStream,
-    F: FnMut(I) -> Fut,
-    Fut: Future<Output = Result<I, O, E>>,
+    F: FnMut(I) -> Fut + Send,
+    Fut: Future<Output = Result<I, O, E>> + Send,
 {
     type Error = E;
     type Output = O;
 
-    fn parse(&mut self, input: I) -> impl Future<Output = Result<I, Self::Output, Self::Error>> {
+    fn parse(
+        &mut self,
+        input: I,
+    ) -> impl Future<Output = Result<I, Self::Output, Self::Error>> + Send {
         self(input)
     }
 }
@@ -42,13 +48,15 @@ macro_rules! tuple_parser {
         impl<$header_a, $($tail_a),+ , I, $header_o, $($tail_o),+, E> Parser<I> for ($header_a, $($tail_a),+)
         where
             I: InputStream,
-            $header_a: Parser<I,Output= $header_o, Error=E>,
-            $($tail_a: Parser<I,Output= $tail_o, Error=E>),+
+            $header_a: Parser<I,Output= $header_o, Error=E> + Send,
+            $($tail_a: Parser<I,Output= $tail_o, Error=E> + Send),+,
+            $header_o: Send,
+            $($tail_o: Send),+,
         {
             type Error = E;
             type Output = ($header_o, $($tail_o),+);
 
-            fn parse(&mut self, input: I) -> impl Future<Output = Result<I, Self::Output, Self::Error>> {
+            fn parse(&mut self, input: I) -> impl Future<Output = Result<I, Self::Output, Self::Error>> + Send {
                 #[allow(non_snake_case)]
                 async move {
 

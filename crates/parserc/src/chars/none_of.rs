@@ -4,7 +4,7 @@ use crate::{utils::FindChar, Error, InputStream, InputStreamUf8, Lookahead, Pars
 pub fn none_of<I, T>(list: T) -> impl Parser<I, Error = Error, Output = char>
 where
     I: InputStream + InputStreamUf8,
-    T: FindChar + Clone,
+    T: FindChar + Clone + Send,
 {
     move |mut input: I| {
         let list = list.clone();

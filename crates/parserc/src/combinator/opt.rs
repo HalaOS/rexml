@@ -7,14 +7,17 @@ struct Opt<P>(P);
 
 impl<I, O, E, P> Parser<I> for Opt<P>
 where
-    P: Parser<I, Output = O, Error = E>,
+    P: Parser<I, Output = O, Error = E> + Send,
     I: InputStream,
 {
     type Error = E;
 
     type Output = Option<O>;
 
-    fn parse(&mut self, input: I) -> impl Future<Output = Result<I, Self::Output, Self::Error>> {
+    fn parse(
+        &mut self,
+        input: I,
+    ) -> impl Future<Output = Result<I, Self::Output, Self::Error>> + Send {
         async move {
             match self.0.parse(input).await {
                 Ok((input, i)) => Ok((input, Some(i))),
@@ -27,7 +30,7 @@ where
 /// Create a optional parser,will return None on inner parse returns Error.
 pub fn opt<I, O, E, P>(parser: P) -> impl Parser<I, Output = Option<O>, Error = E>
 where
-    P: Parser<I, Output = O, Error = E>,
+    P: Parser<I, Output = O, Error = E> + Send,
     I: InputStream,
 {
     Opt(parser)
@@ -35,28 +38,31 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::Parser;
+    use crate::{bytes::tag, Parser};
 
     use super::*;
 
-    async fn mock<I>(input: I) -> Result<I, (), ()>
-    where
-        I: InputStream,
-    {
-        let (input, _) = mock2(input).await?;
-        let (input, _) = mock2(input).await?;
-        Ok((input, ()))
-    }
+    // async fn mock<I>(input: I) -> Result<I, (), ()>
+    // where
+    //     I: InputStream,
+    // {
+    //     let (input, _) = mock2(input).await?;
+    //     let (input, _) = mock2(input).await?;
+    //     Ok((input, ()))
+    // }
 
-    async fn mock2<I>(input: I) -> Result<I, (), ()>
-    where
-        I: InputStream,
-    {
-        Ok((input, ()))
-    }
+    // async fn mock2<I>(input: I) -> Result<I, (), ()>
+    // where
+    //     I: InputStream,
+    // {
+    //     Ok((input, ()))
+    // }
 
     #[futures_test::test]
     async fn test_opt() {
-        opt(mock).parse("hello world").await.unwrap();
+        assert_eq!(
+            opt(tag("hello")).parse("hello world").await,
+            Ok((" world", Some(())))
+        );
     }
 }

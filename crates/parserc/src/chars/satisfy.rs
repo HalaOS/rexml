@@ -4,7 +4,7 @@ use crate::{Error, InputStream, InputStreamUf8, Lookahead, Parser, ParserKind};
 pub fn satisfy<I, F>(cond: F) -> impl Parser<I, Error = Error, Output = char>
 where
     I: InputStream + InputStreamUf8,
-    F: Fn(char) -> bool + Clone,
+    F: Fn(char) -> bool + Clone + Send,
 {
     move |mut input: I| {
         let cond = cond.clone();

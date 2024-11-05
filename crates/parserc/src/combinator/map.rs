@@ -7,9 +7,9 @@ struct Map<P, F> {
 
 impl<I, O1, O2, E, P, F> Parser<I> for Map<P, F>
 where
-    P: Parser<I, Output = O1, Error = E>,
+    P: Parser<I, Output = O1, Error = E> + Send,
     I: InputStream,
-    F: Fn(O1) -> O2,
+    F: Fn(O1) -> O2 + Send,
 {
     type Error = E;
     type Output = O2;
@@ -17,7 +17,7 @@ where
     fn parse(
         &mut self,
         input: I,
-    ) -> impl std::future::Future<Output = crate::Result<I, Self::Output, Self::Error>> {
+    ) -> impl std::future::Future<Output = crate::Result<I, Self::Output, Self::Error>> + Send {
         async move {
             self.parser
                 .parse(input)
@@ -31,8 +31,8 @@ where
 pub fn map<I, O1, O2, E, P, F>(parser: P, map_f: F) -> impl Parser<I, Output = O2, Error = E>
 where
     I: InputStream,
-    P: Parser<I, Output = O1, Error = E>,
-    F: Fn(O1) -> O2,
+    P: Parser<I, Output = O1, Error = E> + Send,
+    F: Fn(O1) -> O2 + Send,
 {
     Map { parser, map_f }
 }
