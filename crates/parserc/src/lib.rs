@@ -6,5 +6,9 @@ mod parser;
 pub use parser::*;
 mod errors;
 pub use errors::*;
+mod utils;
+pub use utils::*;
 
+pub mod bytes;
+pub mod chars;
 pub mod combinator;

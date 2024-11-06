@@ -11,9 +11,9 @@ pub enum Lookahead {
 }
 
 /// Input stream for parsers.
-pub trait InputStream: Send {
+pub trait InputStream {
     /// The Position type returns by [`position`](InputStream::position) function.
-    type Cursor: PartialEq + Send;
+    type Cursor: PartialEq;
 
     /// Returns the lookahead buf length.
     fn len(&self) -> usize;
@@ -25,7 +25,7 @@ pub trait InputStream: Send {
     fn slice(&self) -> &[u8];
 
     /// Load more data from the upstream into the buffer
-    fn lookahead(&mut self, delta: usize) -> impl Future<Output = Lookahead> + Send;
+    fn lookahead(&mut self, delta: usize) -> impl Future<Output = Lookahead>;
 
     /// The argument, mid, should be a byte offset from the start of the string.
     /// it must also be on the boundary of a UTF-8 code point for some impls.
@@ -38,7 +38,7 @@ pub trait AsStr {
     fn as_str(&self) -> &str;
 }
 
-impl InputStream for &str {
+impl<'a> InputStream for &'a str {
     type Cursor = usize;
     fn len(&self) -> usize {
         str::len(&self)
@@ -64,8 +64,47 @@ impl InputStream for &str {
     }
 }
 
-impl AsStr for &str {
+impl<'a> AsStr for &'a str {
     fn as_str(&self) -> &str {
         self
+    }
+}
+
+impl<C, I> InputStream for (C, I)
+where
+    I: InputStream,
+    C: Send,
+{
+    type Cursor = I::Cursor;
+
+    fn len(&self) -> usize {
+        self.1.len()
+    }
+
+    fn slice(&self) -> &[u8] {
+        self.1.slice()
+    }
+
+    fn lookahead(&mut self, len: usize) -> impl Future<Output = Lookahead> {
+        self.1.lookahead(len)
+    }
+
+    fn split_at(self, mid: usize) -> Self {
+        let (c, i) = self;
+        (c, i.split_at(mid))
+    }
+
+    fn position(&self) -> Self::Cursor {
+        self.1.position()
+    }
+}
+
+impl<C, I> AsStr for (C, I)
+where
+    I: AsStr,
+    C: Send,
+{
+    fn as_str(&self) -> &str {
+        self.1.as_str()
     }
 }

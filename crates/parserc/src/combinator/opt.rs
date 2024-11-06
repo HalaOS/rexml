@@ -3,21 +3,18 @@ use std::future::Future;
 use crate::{InputStream, Parser, Result};
 
 /// Optional parser, will return None on inner parse returns Error.
-struct Opt<P>(P);
+pub struct Opt<P>(P);
 
 impl<I, O, E, P> Parser<I> for Opt<P>
 where
-    P: Parser<I, Output = O, Error = E> + Send,
+    P: Parser<I, Output = O, Error = E>,
     I: InputStream,
 {
     type Error = E;
 
     type Output = Option<O>;
 
-    fn parse(
-        &mut self,
-        input: I,
-    ) -> impl Future<Output = Result<I, Self::Output, Self::Error>> + Send {
+    fn parse(&mut self, input: I) -> impl Future<Output = Result<I, Self::Output, Self::Error>> {
         async move {
             match self.0.parse(input).await {
                 Ok((input, i)) => Ok((input, Some(i))),
@@ -28,9 +25,9 @@ where
 }
 
 /// Create a optional parser,will return None on inner parse returns Error.
-pub fn opt<I, O, E, P>(parser: P) -> impl Parser<I, Output = Option<O>, Error = E>
+pub fn opt<I, O, E, P>(parser: P) -> Opt<P>
 where
-    P: Parser<I, Output = O, Error = E> + Send,
+    P: Parser<I, Output = O, Error = E>,
     I: InputStream,
 {
     Opt(parser)
@@ -63,13 +60,14 @@ mod tests {
         Ok((input, ()))
     }
 
-    #[test]
-    fn test_opt() {
+    #[futures_test::test]
+    async fn test_opt() {
         let pool = ThreadPool::new().unwrap();
 
-        pool.spawn(async {
-            assert_eq!(opt(mock).parse("hello").await, Ok(("", Some(()))));
+        pool.spawn_with_handle(async {
+            assert_eq!(opt(mock).parse("hello").await, Ok(("hello", Some(()))));
         })
-        .unwrap();
+        .unwrap()
+        .await;
     }
 }
