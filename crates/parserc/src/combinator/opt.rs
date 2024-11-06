@@ -38,16 +38,38 @@ where
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     use futures::{executor::ThreadPool, task::SpawnExt};
 
-    use crate::{Error, Result};
+    use crate::Result;
 
-    async fn mock(input: &str) -> Result<&str, (), Error> {}
+    #[derive(Debug)]
+    struct Ctx(usize);
+
+    impl Ctx {
+        pub async fn update(&mut self, v: usize) {
+            self.0 += v;
+        }
+    }
+
+    async fn mock(input: &str) -> Result<&str, (), ()> {
+        let mut ctx = Ctx(1);
+
+        for _ in 0..ctx.0 {
+            ctx.update(1).await;
+        }
+
+        Ok((input, ()))
+    }
 
     #[test]
     fn test_opt() {
         let pool = ThreadPool::new().unwrap();
 
-        pool.spawn(async {});
+        pool.spawn(async {
+            assert_eq!(opt(mock).parse("hello").await, Ok(("", Some(()))));
+        })
+        .unwrap();
     }
 }
