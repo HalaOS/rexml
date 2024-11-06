@@ -84,6 +84,8 @@ tuple_parser!(
 
 #[cfg(test)]
 mod tests {
+    use futures::{executor::ThreadPool, task::SpawnExt};
+
     use super::*;
     async fn mock0<I>(input: I) -> Result<I, usize, ()>
     where
@@ -108,19 +110,25 @@ mod tests {
 
     #[futures_test::test]
     async fn test_tuple() {
-        assert_eq!(
-            (mock0, mock1).parse("hello world").await.unwrap(),
-            ("hello world", (0, 1))
-        );
+        let pool = ThreadPool::new().unwrap();
 
-        assert_eq!(
-            (mock2, mock1).parse("hello world").await.unwrap(),
-            ("hello world", (2, 1))
-        );
+        pool.spawn_with_handle(async {
+            assert_eq!(
+                (mock0, mock1).parse("hello world").await.unwrap(),
+                ("hello world", (0, 1))
+            );
 
-        assert_eq!(
-            (mock2, mock0, mock1).parse("hello world").await.unwrap(),
-            ("hello world", (2, 0, 1))
-        );
+            assert_eq!(
+                (mock2, mock1).parse("hello world").await.unwrap(),
+                ("hello world", (2, 1))
+            );
+
+            assert_eq!(
+                (mock2, mock0, mock1).parse("hello world").await.unwrap(),
+                ("hello world", (2, 0, 1))
+            );
+        })
+        .unwrap()
+        .await;
     }
 }
