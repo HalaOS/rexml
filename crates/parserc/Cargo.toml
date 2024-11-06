@@ -1,0 +1,16 @@
+[package]
+description = "parserc is an asynchronous compatible parser combinator library for rust language."
+documentation = "https://docs.rs/parserc"
+edition.workspace = true
+license = "MIT"
+name = "parserc"
+repository = "https://github.com/HalaOS/rexml.git"
+version.workspace = true
+
+[dependencies]
+futures = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+futures-test = { workspace = true }
+futures = { workspace = true, features = ["executor", "thread-pool"] }
