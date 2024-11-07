@@ -1,8 +1,8 @@
 use core::{future::Future, str};
 
-use std::future::Ready;
+use core::future::Ready;
 
-/// Result of [`lookahead`] function.
+/// Result of [`lookahead`](InputStream::lookahead) function.
 pub enum Lookahead {
     /// Cached new data with length.
     Buffered(usize),
